@@ -64,3 +64,27 @@ Empezar por la **Fase 1** de `docs/04-plan.md`: soporte de plataforma Android/bi
 
 - **Diferido a propósito**: qué hacer con la duplicación de libs y la integración de las
   libs del sistema (`Overrides.toml`/`<producto>_path`). Queda documentado, no implementado.
+
+## 2026-10-10 — Anexo: `juliac` (compilar `.jl` a binario) y el paquete
+
+Investigado al margen de los JLL, pero anotado acá porque es otra limitación del
+runtime bionic en el dispositivo:
+
+- **Sí existe el camino**: Julia 1.12 trae `juliac`
+  (`--output-exe` / `--output-lib` / `--output-sysimage`); `PackageCompiler.jl` es la
+  vía clásica. No genera un binario autónomo: linkea `libjulia` **y**
+  `libjulia-internal` (`--relative-rpath` deja las libs al lado).
+- **Upstream no instala wrapper**: en `release-1.12` el script vive en
+  `contrib/juliac/juliac.jl` → `share/julia/juliac/juliac.jl`; `Makefile:92` lo lista
+  como dato compartido y **no hay regla** que ponga un nombre en `PATH` (tampoco en
+  `cli/`, ni en el manual, ni en `NEWS.md`). El port `julia-termux` agrega `bin/juliac`
+  (probado con prefijo reubicado, por symlink y por nombre pelado, 5/5).
+- **Y no compila en este teléfono**: `juliac --output-exe hello hello.jl` muere en el
+  paso `julia --output-o` con `std::bad_alloc` (308 s; **200 s** con `-O0` inyectado en
+  una copia del script, que tampoco alcanza). No falta RAM nominal (12 GB, 7,5 GB
+  disponibles) pero `Committed_AS` (220,9 GB) supera largamente `CommitLimit`
+  (18,6 GB) **[MEDIDO] 2026-10-10**.
+- **No arregla los JLL**: el `.so` del JLL se `dlopen`ea en runtime; son problemas
+  ortogonales.
+
+Detalle completo: `../Julia/julia-termux/PROGRESS.md` (Pendientes, item 7).

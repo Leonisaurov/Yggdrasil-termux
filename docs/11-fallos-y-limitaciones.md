@@ -58,6 +58,9 @@ funcionan.
 | **`Base.BLAS` ya no existe** | **[MEDIDO]** en 1.12 es `LinearAlgebra.BLAS` |
 | **`Base.runtests` cambió de firma** | **[MEDIDO]** `ncores`, no `nthreads`/`verbose` |
 | **`Sys.STDLIB` bakeado al prefijo de build** | **[MEDIDO]** un `.deb` extraído a un prefijo distinto resuelve stdlibs contra el prefijo de build |
+| **`bin/juliac` no viene en el paquete** | **[MEDIDO]** upstream 1.12 no instala wrapper: el script está en `share/julia/juliac/juliac.jl` (`Makefile:92`) y no hay regla que ponga un nombre en `PATH`. El port lo agrega (2026-10-10) |
+| **`juliac` OOMea al compilar** | **[MEDIDO]** `--output-o` (emite el objeto del sysimage completo) muere con `std::bad_alloc` hasta con un hello world: 308 s sin flags, 200 s con `-O0`. `PackageCompiler` es aún más pesado |
+| **`libjulia-internal.so` vive en `lib/julia/`** | **[MEDIDO]** el link de un binario nativo pide `-ljulia -ljulia-internal`, y esa lib no está en `lib/` |
 
 ---
 

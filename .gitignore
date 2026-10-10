@@ -1,0 +1,13 @@
+# Logs y temporales (el workspace usa $PREFIX/tmp, no /tmp)
+*.log
+*.tmp
+*.part
+/tmp/
+
+# Julia (si se agregan entornos de prueba)
+Manifest.toml
+
+# Salidas de build (cuando se implemente)
+/_build/
+/_artifacts/
+/output/

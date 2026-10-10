@@ -88,3 +88,30 @@ runtime bionic en el dispositivo:
   ortogonales.
 
 Detalle completo: `../Julia/julia-termux/PROGRESS.md` (Pendientes, item 7).
+
+## 2026-10-10 — `juliac` medido: es RAM, y nuestro build pide ~19% más
+
+Respuesta al "¿es problema de acá o de Julia?" que quedó abierto en el anexo anterior.
+Se corrió `juliac --output-exe` con **nuestro** artefacto publicado dentro de un prefijo
+Termux materializado en `ubuntu-24.04-arm` (workflow `probe-juliac-binary.yml` del repo
+del port; run **38021823582**):
+
+| Quién | Reloj | Pico RSS | Resultado |
+|---|---|---|---|
+| upstream aarch64 (runner 16 GB) | 2:30 | **6,12 GB** | rc=0, binario corre |
+| upstream x86_64 (runner 16 GB) | 2:28 | 4,48 GB | rc=0, binario corre |
+| **nuestra julia** (runner 16 GB) | 2:40 | **7,30 GB** | rc=0, binario corre (212 MB, `interpreter /system/bin/linker64`) |
+| **nuestra julia** (teléfono) | ~5 min | 6,45 GB | `std::bad_alloc` |
+
+Conclusión: **no es un bug de Julia ni del port**. El paso `julia --output-o` pide
+~6-7 GB y el teléfono no los tiene libres con Android encima. Dos consecuencias:
+`juliac` es usable donde haya ≥8 GB, y en el dispositivo no; y nuestro build bionic
+pide **~1,2 GB más** que el oficial para el mismo hello world (+19%), diferencia que
+conviene mirar si algún día se quiere compilar **en** el teléfono.
+
+El probe necesitó 6 iteraciones y **todas** fueron del entorno del runner, no del
+código del port: SIGPIPE de `ls | head` bajo `pipefail`, el shim `libm.so` que un
+dispositivo tiene y un prefijo solo-.deb no, `bash -e` tragándose el rc de `juliac`,
+el `Pkg.precompile()` que clona el registro, `JULIA_PKG_OFFLINE` que no alcanza con
+depot sin registro, y `git` resolviendo al biónico del prefijo.  Ver
+`../Julia/julia-termux/PROGRESS.md` (Pendientes 7).

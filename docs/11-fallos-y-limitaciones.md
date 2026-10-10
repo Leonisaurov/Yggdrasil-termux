@@ -59,7 +59,9 @@ funcionan.
 | **`Base.runtests` cambió de firma** | **[MEDIDO]** `ncores`, no `nthreads`/`verbose` |
 | **`Sys.STDLIB` bakeado al prefijo de build** | **[MEDIDO]** un `.deb` extraído a un prefijo distinto resuelve stdlibs contra el prefijo de build |
 | **`bin/juliac` no viene en el paquete** | **[MEDIDO]** upstream 1.12 no instala wrapper: el script está en `share/julia/juliac/juliac.jl` (`Makefile:92`) y no hay regla que ponga un nombre en `PATH`. El port lo agrega (2026-10-10) |
-| **`juliac` OOMea al compilar** | **[MEDIDO]** `--output-o` (emite el objeto del sysimage completo) muere con `std::bad_alloc` hasta con un hello world: 308 s sin flags, 200 s con `-O0`. `PackageCompiler` es aún más pesado |
+| **`juliac` necesita ~6-7 GB de RSS** | **[MEDIDO en CI 2026-10-10]** con un hello world: upstream aarch64 **6,12 GB** y x86_64 4,48 GB (rc=0, binario que corre); **nuestra** julia bionic **7,30 GB** (rc=0, binario Android aarch64 de 212 MB que corre). El teléfono muere a **6,45 GB** con Android repartiendo sus 7,5 GB → no es un bug de Julia ni del port, es RAM (y nuestro build pide ~19% más que el oficial). `-O0` no baja el pico; `PackageCompiler` es más pesado |
+| **Correr nuestra julia en un runner necesita emular el namespace de Android** | **[MEDIDO]** un prefijo hecho solo con `.deb` no tiene el `libm.so` que en un dispositivo responden el namespace de Android y el symlink del bootstrap (`$PREFIX/lib/libm.so`, **sin dueño**: `pacman -Qo` no lo reclama). Sin él, el artefacto ni imprime su versión: `Unable to load dependent library .../lib/julia/libm.so` |
+| **El bionic del runner no resuelve DNS** | **[MEDIDO]** `juliac` arranca con `Pkg.precompile()`, que intenta clonar el registro General → `No address associated with hostname`. `JULIA_PKG_OFFLINE` no basta: con un depot **sin** registro, Pkg instala uno igual. Y llamar `git` pelado tampoco: `PATH` con `$PREFIX/bin` delante resuelve al git **biónico** (rc=128) |
 | **`libjulia-internal.so` vive en `lib/julia/`** | **[MEDIDO]** el link de un binario nativo pide `-ljulia -ljulia-internal`, y esa lib no está en `lib/` |
 
 ---

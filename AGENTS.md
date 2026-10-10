@@ -57,5 +57,8 @@ en `docs/04-plan.md`.
 | la causa raíz medida | `docs/01-problema.md` |
 | qué existe y qué no (con fuentes) | `docs/03-estado-del-arte.md` |
 | criterios de aceptación | `docs/06-verificacion.md` |
+| **fallos conocidos y limitaciones** | `docs/11-fallos-y-limitaciones.md` |
+| **la spec de la plataforma bionic** | `docs/12-diseno-plataforma-bionic.md` |
+| cómo se distribuye/consume | `docs/13-distribucion-y-consumo.md` |
 | todas las URLs | `docs/08-referencias.md` |
 | el port de Julia que lo motivó | `../Julia/julia-termux/` |

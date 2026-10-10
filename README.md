@@ -46,6 +46,9 @@ Los JLL son **herméticos**: el wrapper hace `joinpath(artifact_dir, "lib/libX.s
 | [`docs/08-referencias.md`](docs/08-referencias.md) | Todas las URLs y citas. |
 | [`docs/09-jll-hermetico-y-duplicacion.md`](docs/09-jll-hermetico-y-duplicacion.md) | Por qué un JLL no reusa la lib del sistema, y qué sí lo haría. |
 | [`docs/10-glosario.md`](docs/10-glosario.md) | Términos (JLL, artefacto, BinaryPlatforms, shard, ABI, …). |
+| [`docs/11-fallos-y-limitaciones.md`](docs/11-fallos-y-limitaciones.md) | **Catálogo de fallos conocidos, limitaciones y troubleshooting** (con [MEDIDO]/[CITADO]). |
+| [`docs/12-diseno-plataforma-bionic.md`](docs/12-diseno-plataforma-bionic.md) | **Spec exacta** de la plataforma bionic: los 3 cambios de `binaryplatforms.jl`, el tag, la entrada `Artifacts.toml`, el toolchain. |
+| [`docs/13-distribucion-y-consumo.md`](docs/13-distribucion-y-consumo.md) | Cómo se distribuye y consume: registro propio vs `Overrides.toml`, hosting y licencias. |
 
 ## Cómo se usaría este repo
 

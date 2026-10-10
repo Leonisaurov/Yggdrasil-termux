@@ -46,3 +46,21 @@
 
 Empezar por la **Fase 1** de `docs/04-plan.md`: soporte de plataforma Android/bionic en
 `Base.BinaryPlatforms` (patch reproducible sobre un pin), con su criterio de aceptación.
+
+### Documentación agregada en el cierre de la investigación
+
+- `docs/11-fallos-y-limitaciones.md`: catálogo de fallos conocidos y limitaciones, con tag
+  `[MEDIDO]`/`[CITADO]`/`[INFERIDO]`, matriz “qué funciona / qué no”, y **troubleshooting**
+  de los mensajes de error (`libm.so.6 not found`, `@GLIBC_*`, `uv_cpu_info EACCES`,
+  `signal 31`, `rc=127` musl, `Package X not found`, etc.).
+- `docs/12-diseno-plataforma-bionic.md`: la **spec** con los cambios exactos de
+  `binaryplatforms.jl`/`normalize_triplet.py` (patch de referencia de TUR, citado), valores
+  del tag, entrada de `Artifacts.toml` y toolchain (NDK).
+- `docs/13-distribucion-y-consumo.md`: registro propio vs `Overrides.toml` (incluida la
+  variante **por hash**, que **no requiere** el patch de plataforma y sirve para el piloto),
+  hosting y licencias.
+
+### Pendientes decididos por el usuario
+
+- **Diferido a propósito**: qué hacer con la duplicación de libs y la integración de las
+  libs del sistema (`Overrides.toml`/`<producto>_path`). Queda documentado, no implementado.

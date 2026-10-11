@@ -232,3 +232,30 @@ aparecieron en la primera corrida y quedaron documentadas: cmake agarrando el **
 (glibc) y muriendo en el `LD_PRELOAD` bionic —el mismo muro que `/bin/sh`, un nivel más abajo— y
 el prefijo del CI sin `gettext`, que hacía colgar los symlinks del dir compuesto (el input
 `packages` de la acción lo resuelve).
+
+## 15.7 Lo que falta para el camino del registro, y una trampa medida
+
+El paso estructural (docs/13 §13.1) necesita dos mitades que ya están en marcha:
+
+1. **La plataforma** — `base-binaryplatforms.jl.patch` enseña la gramática (`bionic` en
+   `validate_tags`, `-android` ⇄ `bionic` en el mapa y en `libc_str`) y la receta fija
+   `BB_TRIPLET_LIBGFORTRAN_CXXABI=aarch64-linux-android-cxx11` en la línea de `make`, porque el
+   build corre en un runner Ubuntu y si no el triplete que el sysimage embebe sigue diciendo
+   `gnu`.  Gate estático en verde (incluye su propio chequeo del triplete).
+2. **El fork del JLL + el registro** — el `Artifacts.toml` del fork necesita una entrada
+   `libc = "bionic"` con el `git-tree-sha1` del artefacto, y el registro un `Versions.toml` con
+   una versión **mayor** que la del General (`3.3.12+1` contra `3.3.12+0`) para que gane la
+   precedencia.
+
+**La trampa medida**: el `git-tree-sha1` no es el sha256 del tarball, es el hash del *árbol* del
+directorio ya extraído (medido con `Pkg.GitTools.tree_hash`: FFTW `2c72b050…`, LERC `bc253a9c…`,
+gettext-runtime `59b26fe1…`).  Y el tarball que hoy publicamos **no sirve** para una entrada de
+`Artifacts.toml`: envuelve todo en `fftw-bionic/`, y Pkg extrae el tarball tal cual, así que el
+JLL buscaría `artifact_dir/lib/libfftw3.so` y encontraría `artifact_dir/fftw-bionic/lib/…`.
+Para `Overrides.toml` está bien (la entrada apunta al *directorio*, no al tarball), y por eso los
+37 overrides validados no se ven afectados; para el registro hay que republicar los tres con la
+raíz del tarball **en la raíz del artefacto**, que es como los empaqueta BinaryBuilder.
+
+Los dos wrappers de plataforma del fork (`aarch64-linux-android.jl` y `aarch64-linux-bionic.jl`,
+idénticos) se copian del `-gnu`: el contenido es independiente de la plataforma y está medido que
+funciona en el dispositivo (los 37 overrides cargan con el wrapper gnu sin tocar nada).

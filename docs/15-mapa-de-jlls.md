@@ -113,6 +113,16 @@ validated: 19 / 24        # FFTW + los 23 ganadores del barrido
 artifact directories after: 22 (0 new)
 ```
 
+Y con **consumidores reales**, no sólo con el JLL: `using FFTW` (su artefacto bionic) y
+`using SQLite` — este último con el override del sistema, `INSERT` con parámetros y `SELECT`
+de vuelta:
+
+```
+SELECT a = [42, 43]   ok = true
+libsqlite = /data/data/com.termux/files/usr/lib/libsqlite3.so
+depot: 22 entradas (sin cambios: no bajó nada)
+```
+
 Los cinco que no cargan tienen **cinco bloqueadores raíz**:
 
 | bloqueador | veredicto | bloquea |

@@ -130,3 +130,29 @@ depot sin registro, y `git` resolviendo al biónico del prefijo.  Ver
   JLL cargó la libpng bionic del sistema (`ccall png_access_version_number` → 10659).
 - `docs/09` §9.7: el override por hash evita la descarga; el UUID+nombre no (Pkg pierde el
   uuid).  El parche de consumo vive en julia-termux y quedó registrado en `docs/14`.
+
+## 2026-10-11 — El artefacto bionic de FFTW: el primer `needs-jll` resuelto
+
+- `scripts/build-fftw-bionic.sh` (en `../Julia/julia-termux`): construye el artefacto con el
+  clang bionic en **dos pasadas** de `configure` (`--enable-threads --with-combined-threads
+  --enable-neon --disable-fortran`, la segunda con `--enable-float`), con el tarball pineado
+  por sha256.  **Medido**: `libfftw3.so.3.7.11` 1.395.769 B y `libfftw3f.so.3.7.11`
+  1.396.537 B, SONAME `libfftw3.so.3` / `libfftw3f.so.3`, **207 codelets `_neon`** cada una,
+  `init_threads` presente.
+- **Libtool ignora `-version-info` en este host**: su `config.guess` no conoce el triplete
+  Android (medido: `.la` con `library_names='libfftw3.so libfftw3.so'` aunque el Makefile
+  traía `SHARED_VERSION_INFO = 10:11:7`) ⇒ el naming oficial se arma a mano (archivo real
+  versionado + `patchelf --set-soname` + symlinks).
+- **Aceptación**: programa C bionic que carga por soname, inicializa threads y ejecuta una
+  transformada → `dc[1] = -4.000 9.657` (rc=0).  Gap restante: 102 símbolos, **todos**
+  wrappers Fortran (`dfftw_*`/`sfftw_*`), que ningún consumidor de Julia usa.
+- **Publicado y verificado en el dispositivo**: release `fftw-bionic` (1.555.734 B, sha256
+  `3c3e8f50…`) bajado al teléfono; con el artefacto glibc apartado del depot y el override
+  UUID+nombre, `FFTW_jll.libfftw3_path = …/fftw-bionic/lib/libfftw3.so`, `fft/ifft`, `rfft`,
+  `plan/apply` y `dct/idct` correctos, y **el depot sin bajar nada**.
+- Workflow propio (`build-fftw-bionic.yml`, ~4 min, grupo de concurrencia propio, no toca
+  `packages/julia/**`): así un cambio del artefacto no invalida el caché del build de Julia
+  (~60 min).  Tres corridas fallaron por trampas del entorno del runner (normalizar una ruta
+  antes de crearla, el `/bin/sh` glibc con el `LD_PRELOAD` bionic → *invalid ELF header*, la
+  caché del tarball recomputada tras el re-exec, y `tar | head` bajo `pipefail`); las tres
+  quedaron registradas en `../Julia/julia-termux/AGENTS.md`.

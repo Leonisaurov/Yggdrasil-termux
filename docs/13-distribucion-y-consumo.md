@@ -49,7 +49,11 @@ FFTW = "/data/data/com.termux/files/usr/ygg-artifacts/FFTW-bionic"
 Más estable que (a) (no depende del hash), pero requiere que el directorio tenga el layout
 que el JLL espera (`lib/libfftw3.so`, …).
 
-**Recomendado para el piloto: (a).** Para la distribución final: 13.1.
+**Recomendado para el piloto: (b) hoy, (a) para no tocar el JLL.**  Medido 2026-10-11: con
+el parche de `Pkg` de `julia-termux` la forma (b) **sí** evita la descarga, así que la tabla
+JLL→directorio se escribe una vez y no se reescribe con cada versión del JLL.  El artefacto
+de §14.1 se consume así (el directorio solo tiene que tener el layout que el JLL espera:
+`lib/libfftw3.so`, …).  Para la distribución final: 13.1.
 
 ## 13.3 Distribución de los artefactos (hosting)
 
@@ -58,6 +62,12 @@ que el JLL espera (`lib/libfftw3.so`, …).
 | **GitHub Releases de un fork de `JuliaBinaryWrappers/<pkg>_jll.jl`** | lo más parecido al flujo real; `Artifacts.toml` apunta ahí |
 | **Host propio (S3/HTTP estático)** | si no se quiere depender de GitHub; mismo formato de URL+sha |
 | **Solo local (`Overrides.toml`)** | piloto / uso personal |
+
+**Medido (2026-10-11)**: el artefacto bionic de FFTW vive en un **release del propio repo del
+port** (`fftw-bionic` en `Leonisaurov/julia-termux`) con su `.sha256`, y se consume con la
+entrada UUID+nombre de §13.2 (b).  No hace falta un fork de `JuliaBinaryWrappers/<pkg>_jll.jl`
+para el piloto: el `Artifacts.toml` parcheado y el registro propio quedan para cuando haya
+más de un puñado de artefactos que mantener.
 
 Como el usuario de Termux suele tener red, Releases es lo natural.
 

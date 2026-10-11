@@ -26,7 +26,7 @@ símbolos*.
 
 | JLL | veredicto | evidencia |
 |---|---|---|
-| `FFTW_jll` | **needs-jll** | 235 símbolos de API faltantes: `fftwf_cleanup_threads`, `fftwf_codelet_*_neon`, … — el artefacto oficial fusiona el API de threads en `libfftw3` y Termux usa el layout de upstream; además faltan los codelets NEON |
+| `FFTW_jll` | **needs-jll** → **resuelto con un artefacto bionic** (§14.1) | 235 símbolos de API faltantes: `fftwf_cleanup_threads`, `fftwf_codelet_*_neon`, … — el artefacto oficial fusiona el API de threads en `libfftw3` y Termux usa el layout de upstream; además faltan los codelets NEON |
 | `libpng_jll` | **override-needs-alias** | 240/240 símbolos coinciden; solo falta el *nombre* `libpng16.so.16` (Termux shipa `libpng16.so`) |
 | `Zlib_jll` | **system-stub** | stub de stdlib: `dlopen("libz.so.1")`, lo responde `$PREFIX/lib` |
 | `OpenSSL_jll` | **system-stub** | `libcrypto.so.3`, `libssl.so.3` en `$PREFIX/lib` |
@@ -60,6 +60,57 @@ ccall png_access_version_number = 10659
 
 Una JLL **funcionando en bionic sin compilar nada**, y el artefacto no volvió a bajarse.
 
+## 14.1 El primer `needs-jll` resuelto: el artefacto bionic de FFTW (2026-10-11)
+
+`FFTW_jll` era el caso que decidía si Yggdrasil tenía razón de existir: la librería **está**
+en Termux, pero no sirve para el JLL.  Medido: el build de Termux trae el layout de
+upstream (`fftw_init_threads` en `libfftw3_threads.so`) y el artefacto oficial fusiona el
+API de threads dentro de `libfftw3` (es lo que pide el wrapper: `libfftw3_no_init`), y sus
+codelets NEON no están en el paquete del sistema.  De ahí los 235 símbolos de diferencia.
+
+La conclusión no fue "override" ni "shim": fue **construir el artefacto**, con la misma
+receta que el oficial pero con el clang bionic, y distribuirlo como artefacto +
+`Overrides.toml`.  Es la Fase 4 del plan, **sin BinaryBuilder**.
+
+**Cómo se construye** (`../Julia/julia-termux/scripts/build-fftw-bionic.sh`, reproducible:
+tarball pineado + sha256):
+
+- **dos pasadas** de `configure` (fftw construye una precisión por vez):
+  `--enable-shared --disable-static --enable-threads --with-combined-threads --enable-neon
+  --disable-fortran`, la segunda con `--enable-float`.  `--with-combined-threads` es
+  justamente el flag que produce el layout que el JLL espera, y `--enable-neon` los codelets;
+- **el naming oficial se arma a mano**: libtool **ignora `-version-info` en este host** (su
+  `config.guess` no conoce el triplete Android: medido, el `.la` salió
+  `library_names='libfftw3.so libfftw3.so'` mientras el Makefile sí traía
+  `SHARED_VERSION_INFO = 10:11:7`) ⇒ archivo real `.so.3.7.11`,
+  `patchelf --set-soname libfftw3.so.3`, y los dos symlinks;
+- **aceptación, no "compiló"**: un programa C bionic que carga por el nombre que el JLL
+  declara, inicializa el API de threads y ejecuta una transformada — medido
+  `dc[1] = -4.000 9.657`, `soname=libfftw3.so.3`, `threads=1`, `neon_codelets=207` por lib.
+
+**El gap que queda**: 102 símbolos, **todos wrappers Fortran** (`dfftw_*`/`sfftw_*`), que
+fftw genera con un compilador Fortran que este entorno no tiene.  Ningún consumidor de
+Julia los usa (FFTW.jl va por la API C); el clasificador los reporta como la única
+diferencia contra el artefacto oficial.
+
+**Medido end-to-end en el teléfono, con el artefacto publicado** (release `fftw-bionic` de
+`Leonisaurov/julia-termux`, 1.555.734 B, sha256 `3c3e8f50…`, bajado y verificado en el
+dispositivo):
+
+```
+libfftw3_path  = /data/data/com.termux/files/home/.local/opt/fftw-bionic/lib/libfftw3.so
+libfftw3f_path = …/fftw-bionic/lib/libfftw3f.so
+fft/ifft ok = true   rfft ok = true   plan/apply ok = true   dct/idct ok = true
+depot: solo Overrides.toml   # el artefacto glibc oficial apartado ⇒ no se bajó nada
+```
+
+O sea: **FFTW.jl funciona en bionic**, con el override por UUID+nombre (estable entre
+versiones del JLL, gracias al parche de `Pkg` que describe la sección siguiente) y sin duplicar la descarga.
+
+**El workflow es barato y aparte**: `build-fftw-bionic.yml` tiene su propio grupo de
+concurrencia y **no toca `packages/julia/**`**, así que no puede invalidar el caché del
+build de Julia (que cuesta ~60 min); construye el artefacto en ~4 min.
+
 ## El lado del consumo ya tiene parche (2026-10-11)
 
 La forma **estable** de override (UUID+nombre) no evitaba la descarga porque el camino de
@@ -73,4 +124,4 @@ funciona, no servía como política.
 
 1. ¿Termux shipa la librería?  Si no → **Yggdrasil**.
 2. ¿El sistema expone los productos/símbolos que el JLL declara? → **override** (cero descarga, cero build); si solo falta el nombre → **override + symlink**.
-3. Si el build del sistema exporta menos API (otra feature set) → **Yggdrasil o un shim**; `FFTW_jll` es el caso medido.
+3. Si el build del sistema exporta menos API (otra feature set) → **Yggdrasil o un shim**; `FFTW_jll` es el caso medido y ya resuelto con un artefacto bionic (§14.1).

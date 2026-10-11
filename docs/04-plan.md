@@ -119,6 +119,14 @@ bionic.
 
 **Objetivo**: `FFTW_jll` con artefacto Android, instalable con `Pkg.add`.
 
+> **Hecho el 2026-10-11, por el camino corto** (ver `docs/14` §14.1): el artefacto bionic de
+> FFTW existe, se construye en ~4 min en CI con el clang bionic (dos pasadas de `configure`
+> con `--with-combined-threads --enable-neon`, naming oficial a mano), se publica en un
+> release con su sha256, y **FFTW.jl funciona en el teléfono** consumiéndolo por
+> `Overrides.toml` — sin BinaryBuilder, sin registro, sin fork del JLL.  Lo que queda de
+> esta fase es (a) el registro propio / `Artifacts.toml` parcheado para distribuirlo "de
+> verdad", y (b) repetirlo para el resto de las libs que el clasificador marque `needs-jll`.
+
 **Trabajo**
 - Fork/patch de la receta `F/FFTW/build_tarballs.jl` para incluir la plataforma bionic.
 - Correr el build (en CI arm64, no en el teléfono).

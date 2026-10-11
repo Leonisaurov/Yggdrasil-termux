@@ -1,0 +1,62 @@
+# JLLs whose gap against the system build is accepted, with the evidence for each.
+#
+# The classifier refuses a `needs-jll (gap)` override by default, and it should: a symbol the
+# system does not export is a real difference.  These are the cases where the difference is
+# measured, understood and harmless - and each one is written here, not silently allowed, so
+# a new gap can never slip through.
+#
+# The rule: the system's build must be *newer* than the artifact the JLL expects (so the
+# symbol was removed upstream, and "fixing" it would mean shipping an older library), or the
+# symbol must belong to a language no consumer here uses.
+
+# Fontconfig_jll - 1 symbol: `default_langs` (data).
+#   Termux ships fontconfig 2.18.3; the JLL's artifact is 2.17.1.  Upstream removed
+#   `default_langs` from the export surface, so an override is the newer library, not a
+#   degraded one.  Nothing in Julia reads it (`nm` shows it is not even a local symbol in
+#   2.18.3 - it is gone).
+Fontconfig_jll
+
+# Libffi_jll - 2 symbols: `ffi_call_go`, `ffi_prep_go_closure`.
+#   Termux ships libffi 3.8.0; the JLL's artifact is 3.4.7.  Those two entry points exist for
+#   Go's closure support, which this port's consumers (Julia, C) never call.  Newer system,
+#   symbols absent upstream: accepted.
+Libffi_jll
+
+# GettextRuntime_jll - 10 symbols, all in `libasprintf` (not in `libintl`).
+#   Termux ships gettext 1.0; the JLL's artifact is 0.22.4.  The missing names are the
+#   pre-1.0 spellings (`libasprintf_asnprintf`, `libasprintf_memchr`, ...) plus a C++
+#   conversion operator, and gettext 1.0 exports the same functionality under different
+#   names - a newer library with a renamed internal surface, not a reduced one.  `libintl`,
+#   the product consumers actually call, matches symbol for symbol, and JLLWrappers only
+#   dlopens: nothing validates the missing names.
+GettextRuntime_jll
+
+# Libglvnd_jll - 1 symbol: `_glapi_tls_Current` (a GL dispatch TLS variable).
+#   Every other product matches exactly - 44/44, 3470/3470, 145/145, 358/358, 42/42,
+#   1044/1044 - and the system's libGLdispatch.so simply does not define that one internal.
+#   It is Mesa's dispatch state, not API any Julia consumer calls.  Measured with nm on
+#   $PREFIX/lib/libGLdispatch.so: 0 occurrences.
+Libglvnd_jll
+
+# XML2_jll - 236 symbols, and the largest accepted gap here, on purpose.
+#   Termux ships libxml2 2.15.4; the JLL's artifact is 2.13.9.  The system is *newer* and
+#   exports *more* (1400 dynamic symbols against 1369), so the 236 are the names 2.15 removed
+#   or renamed upstream.  A consumer calling them is broken by any newer libxml2, on any
+#   platform - the gap is a version fact, not a property of this port.  Accepted for that
+#   reason, and recorded as the biggest of the three.
+XML2_jll
+
+# Arpack_jll - 2 symbols: `dbgini_`, `staini_`.
+#   Fortran debug hooks from ARPACK's debug build (the official artifact is built with them).
+#   Arpack.jl calls `dsaupd_`/`dseupd_`/... , not these; nothing in Julia reaches them.
+Arpack_jll
+
+# Gettext_jll - 47 symbols in `libgettextlib.so`, and the names say what they are.
+#   `getrandom`, `copy_file_range`, `getprogname`, `get_full_program_name`,
+#   `compute_curr_prefix`: those are gnulib's portability shims for functions the C library is
+#   expected to provide.  The glibc artifact carries them because glibc needed the shims at the
+#   time; bionic has `getrandom` and `copy_file_range` natively, so Termux's gettext 1.0 builds
+#   without them - their absence is the *correct* result on this platform, not a reduced
+#   library.  `libgettextlib` is the gettext tools' internal library (the JLL's only product);
+#   no consumer calls its shims, and JLLWrappers only dlopens it.
+Gettext_jll

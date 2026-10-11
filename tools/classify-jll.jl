@@ -77,6 +77,7 @@ function parse_args(args)
     prefix = get(ENV, "PREFIX", "/data/data/com.termux/files/usr")
     show_symbols = 5
     markdown = false
+    accepted = joinpath(@__DIR__, "jlls-accepted-gaps.txt")
     sweep = nothing
     jlls = String[]
     i = 1
@@ -90,6 +91,8 @@ function parse_args(args)
             sweep = args[i + 1]; i += 2
         elseif a == "--md"
             markdown = true; i += 1
+        elseif a == "--accepted" && i < length(args)
+            accepted = args[i + 1]; i += 2
         else
             push!(jlls, a); i += 1
         end
@@ -101,10 +104,50 @@ function parse_args(args)
             push!(jlls, split(s)[1])
         end
     end
-    return prefix, show_symbols, markdown, jlls
+    return prefix, show_symbols, markdown, accepted, jlls
 end
 
-const PREFIX, SHOW, MARKDOWN, JLLS = parse_args(ARGS)
+const PREFIX, SHOW, MARKDOWN, ACCEPTED_FILE, JLLS = parse_args(ARGS)
+
+# Gaps accepted on purpose, each with the reason written above it in the file.  A gap that is
+# not declared here keeps its `needs-jll (gap)` verdict: this is an exception list, not a
+# switch to silence the check.
+function read_accepted(path::AbstractString)
+    accepted = Dict{String,String}()
+    isfile(path) || return accepted
+    reason = String[]
+    for line in eachline(path)
+        s = strip(line)
+        if startswith(s, "#")
+            push!(reason, strip(lstrip(s, '#')))
+        elseif isempty(s)
+            empty!(reason)
+        else
+            accepted[split(s)[1]] = join(filter(!isempty, reason), " ")
+            empty!(reason)
+        end
+    end
+    return accepted
+end
+
+const ACCEPTED = read_accepted(ACCEPTED_FILE)
+
+# JLLs whose override points at an artifact this port built, not at $PREFIX.  Same idea as the
+# accepted gaps: an explicit list, each entry with its reason, so a "built" override is never
+# inferred.
+function read_built(path::AbstractString)
+    built = Dict{String,String}()
+    isfile(path) || return built
+    for line in eachline(path)
+        s = strip(line)
+        (isempty(s) || startswith(s, "#")) && continue
+        f = split(s)
+        length(f) >= 2 && (built[f[1]] = f[2])
+    end
+    return built
+end
+
+const BUILT = read_built(joinpath(@__DIR__, "jlls-built-artifacts.txt"))
 
 function sh(cmd::Cmd)
     out = IOBuffer()
@@ -259,6 +302,9 @@ const VERDICT_LABEL = Dict(
     :needs_jll_absent => "needs-jll (absent lib)",
     :needs_jll_exe => "needs-jll (absent exe)",
     :needs_jll_gap => "needs-jll (gap)",
+    :override_accepted_gap => "override (accepted gap)",
+    :override_partial => "override (missing exe/file)",
+    :override_built => "override (built artifact)",
     :system_stub => "system-stub",
     :needs_alias => "needs-alias",
     :no_artifact => "no-artifact",
@@ -465,21 +511,46 @@ function classify(jll::String; env::Union{Nothing,String} = nothing)
         :override
     end
 
+    # Two refinements that decide the *lever*, both measured:
+    # - a gap listed in jlls-accepted-gaps.txt is understood and harmless, so the override is
+    #   taken (the file carries the evidence for each);
+    # - missing executables or static files do not stop the override either: JLLWrappers'
+    #   @init_executable_product does not check that the file exists (read in its source, then
+    #   confirmed by loading the JLL), it only computes the path and adds its directory to PATH.
+    #   A consumer that actually runs the program gets a plain ENOENT from the path it asks for.
+    if haskey(BUILT, jll)
+        # A built artifact answers whatever gap the system has: the override does not use the
+        # system for this JLL at all.
+        verdict = :override_built
+        println("  this port built the artifact: ", BUILT[jll])
+    elseif verdict === :needs_jll_gap && haskey(ACCEPTED, jll)
+        verdict = :override_accepted_gap
+        println("  accepted gap: ", first(ACCEPTED[jll], 200))
+    elseif verdict === :needs_jll_exe
+        verdict = :override_partial
+        println("  the missing products are executables/static files, which JLLWrappers does not")
+        println("  validate: the override loads, and only a consumer running them would notice")
+    end
+
     note = verdict === :needs_jll_gap ?
         "the system build exports less API: $(sum(length, values(gaps))) symbols" :
         verdict === :needs_jll_absent ? "the system root lacks the libraries: $(join(absent_libs, ", "))" :
         verdict === :needs_jll_exe ? "the library is fine; the system root lacks $(join(absent, ", "))" :
+        verdict === :override_accepted_gap ? "accepted gap: $(first(get(ACCEPTED, jll, ""), 120))" :
+        verdict === :override_partial ? "the system lacks $(join(absent, ", ")), which JLLWrappers does not validate" :
+        verdict === :override_built ? "override points at the artifact this port built, not at the system" :
         verdict === :override_needs_alias ? "missing names: $(join(keys(sonames), ", "))" :
         "the system satisfies every declared product"
     f = Finding(jll, pkgid.uuid === nothing ? "" : string(pkgid.uuid), verdict, artifacts, kb,
                 sort(collect(keys(prods))), absent, gaps, sonames, note)
     println("  => verdict: ", VERDICT_LABEL[verdict])
-    if verdict in (:override, :override_needs_alias)
+    target = get(BUILT, jll, PREFIX)
+    if verdict in (:override, :override_needs_alias, :override_accepted_gap, :override_partial, :override_built)
         # The stable form: keyed by the JLL's uuid and the artifact name, so it survives the
         # JLL being updated.  It needs the patched Pkg julia-termux ships (docs/14) - without
         # it Pkg loses the uuid on the download path and fetches the artifact anyway.
         for (aname, hash) in artifacts
-            println("     Overrides.toml: [$(pkgid.uuid)]  $aname = \"$PREFIX\"    (hash $hash)")
+            println("     Overrides.toml: [$(pkgid.uuid)]  $aname = \"$target\"    (hash $hash)")
         end
     elseif verdict === :override_needs_alias
         println("     the system has the API; create the missing names (a symlink each) and then the line above")
@@ -533,7 +604,9 @@ if !isempty(findings)
     println("\n  official artifacts on disk for these JLLs: $(round(duplicated / 1024, digits = 1)) MB")
     println("  (that is the duplication today: every one of them is downloaded and none of them loads)")
 
-    free = [f for f in findings if f.verdict in (:override, :override_needs_alias)]
+    free = [f for f in findings if f.verdict in (:override, :override_needs_alias,
+                                                 :override_accepted_gap, :override_partial,
+                                                 :override_built)]
     stub = [f for f in findings if f.verdict in (:system_stub, :needs_alias)]
     absent = [f for f in findings if f.verdict === :needs_jll_absent]
     exe = [f for f in findings if f.verdict === :needs_jll_exe]
@@ -544,10 +617,14 @@ if !isempty(findings)
     end
     if !isempty(free)
         println("\n  free win — one Overrides.toml line each, nothing to build: ", join(getfield.(free, :jll), ", "))
+        for f in free
+            f.verdict in (:override_accepted_gap, :override_partial) || continue
+            println("    $(f.jll): $(VERDICT_LABEL[f.verdict]) — $(f.note)")
+        end
         println("  # ~/.julia/artifacts/Overrides.toml  (stable form: needs the patched Pkg)")
         for f in free
             for (aname, _) in f.artifacts
-                println("  [$(f.uuid)]\n  $aname = \"$PREFIX\"    # $(f.jll)")
+                println("  [$(f.uuid)]\n  $aname = \"$(get(BUILT, f.jll, PREFIX))\"    # $(f.jll)")
             end
         end
     end
@@ -599,6 +676,9 @@ println("override-needs-alias  same, plus a name to create (a symlink answers it
 println("needs-jll (absent lib)  a declared *library* is not in the system root: pkg install, or Yggdrasil")
 println("needs-jll (absent exe)  the library is fine, but the JLL also declares a program/file the system lacks")
 println("needs-jll (gap)       the system's build exports less API than the official one: Yggdrasil or a shim")
+println("override (accepted gap)   the same, for a gap declared in jlls-accepted-gaps.txt with its evidence")
+println("override (missing exe/file)  the library is satisfied; JLLWrappers does not validate executables/static files")
+println("override (built artifact)    the override points at an artifact this port built (jlls-built-artifacts.txt)")
 println("system-stub           stdlib stub: already resolves to the system, downloads nothing")
 println("needs-alias           a stub whose soname nothing answers (a symlink fixes it)")
 

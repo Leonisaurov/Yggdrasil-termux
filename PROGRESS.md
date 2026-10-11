@@ -178,3 +178,30 @@ depot sin registro, y `git` resolviendo al biónico del prefijo.  Ver
 - `overrides/termux-overrides.toml`: 24 entradas (FFTW + los 23 ganadores), aplicadas y
   validadas en el dispositivo.  Duplicación medida del stack: **209,3 MB** de artefactos
   oficiales en 43 JLLs, ninguno de los cuales carga.
+
+## 2026-10-11 — Los cinco bloqueadores, cerrados sin construir casi nada
+
+- El barrido dejó cinco bloqueadores raíz.  **Cuatro no necesitaron build**, y el motivo es una
+  medición: Fontconfig y Libffi son gaps aceptables (el sistema es *más nuevo* y el símbolo
+  desapareció aguas arriba; los de Libffi son entry points de Go), y JpegTurbo/Expat/XZ sólo
+  tenían productos **no validados** — leído en el fuente de JLLWrappers,
+  `@init_executable_product` no chequea que el archivo exista, sólo calcula el path.
+- `GettextRuntime_jll` sí necesitó trabajo: `find $PREFIX -name 'libintl*'` muestra que Termux
+  **no shipa `libintl`** (sólo headers y jars) y Glib lo necesita.  Se compiló gettext 1.0
+  (`make -C gettext-runtime/intl`, sha256 85d99b79…) y el override es un **dir compuesto**:
+  `libintl.so` propio + symlinks al `libasprintf.so` y a los programas del sistema.
+- `LERC_jll`: Termux no empaqueta `libLerc` y Libtiff lo necesita → **artefacto propio**,
+  compilado de Esri LERC 4.2.0 (sha256 a1fb593e…) con el clang++ bionic; `libLerc.so.4` sólo
+  pide `libc++_shared`/`libc`/`libm`.
+- Mecanismos nuevos, los dos con evidencia al lado: `tools/jlls-accepted-gaps.txt` (6 gaps
+  declarados; el clasificador **no** los toma si no están escritos) y
+  `tools/jlls-built-artifacts.txt` (3 JLLs cuyo override apunta a un artefacto propio).
+  `overrides/aliases.sh` crea los nombres que el sistema no shipa (`libpng16.so.16`,
+  `libfribidi.so.0`), idempotente.
+- **Medido al cerrar**: `needs-jll (gap) 0` y `needs-jll (absent lib) 0` en los 53 JLLs de la
+  clausura; `validate-overrides.jl` → **37/37**, 0 artefactos nuevos.  Consumidores reales:
+  FFTW.jl, SQLite.jl, EzXML.jl (valida el gap de 236 de XML2) y `using Cairo` cargando
+  Cairo+Pango+Glib+FriBidi sin InitError.
+- La clausura es más profunda de lo que se escribe a mano: `Cairo.jl` reveló `Pango_jll` →
+  `FriBidi_jll`.  Por eso `tools/jlls-closure.txt` se **deriva** de lo instalado después de cada
+  barrido y converge un nivel por vuelta.

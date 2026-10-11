@@ -1,28 +1,37 @@
-# The JLLs whose override has been validated with tools/validate-overrides.jl on the
-# device: FFTW (its own bionic artifact) plus the sweep's free wins (docs/15).
-# 19/24 load with every product resolving outside the depot's artifacts.  The five that
-# do not are blocked by a dependency, and the blocker is named in docs/15 15.3.
+Arpack_jll
+Bzip2_jll
+Cairo_jll
+Expat_jll
 FFTW_jll
+Fontconfig_jll
+FreeType2_jll
+FriBidi_jll
+GettextRuntime_jll
+Gettext_jll
 Giflib_jll
+Glib_jll
 Graphite2_jll
+HarfBuzz_jll
+JpegTurbo_jll
+LERC_jll
+Libffi_jll
+Libglvnd_jll
 Libiconv_jll
 Libmount_jll
+Libtiff_jll
 Libuuid_jll
+Pango_jll
+Pixman_jll
+SQLite_jll
+XML2_jll
+XZ_jll
 Xorg_libX11_jll
 Xorg_libXau_jll
 Xorg_libXdmcp_jll
 Xorg_libXext_jll
 Xorg_libXrender_jll
 Xorg_libxcb_jll
-libpng_jll
-Cairo_jll
-Pixman_jll
-FreeType2_jll
-HarfBuzz_jll
-Glib_jll
-Libtiff_jll
-libwebp_jll
 Zstd_jll
-Bzip2_jll
-SQLite_jll
+libpng_jll
 libsodium_jll
+libwebp_jll

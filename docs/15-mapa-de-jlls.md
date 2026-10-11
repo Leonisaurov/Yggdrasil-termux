@@ -123,7 +123,7 @@ libsqlite = /data/data/com.termux/files/usr/lib/libsqlite3.so
 depot: 22 entradas (sin cambios: no bajó nada)
 ```
 
-Los cinco que no cargan tienen **cinco bloqueadores raíz**:
+Los cinco que no cargaban tenían **cinco bloqueadores raíz** — resueltos todos en §15.6:
 
 | bloqueador | veredicto | bloquea |
 |---|---|---|
@@ -157,3 +157,54 @@ julia tools/validate-overrides.jl --list tools/jlls-overrides.txt    # la valida
 ```
 
 El depot de scratch se borra al final: `rm -rf "$TMPDIR/ygg-depot"`.
+
+## 15.6 Los cinco bloqueadores, resueltos (2026-10-11)
+
+La regla del proyecto es no construir lo que el sistema ya da, así que cada bloqueador se
+resolvió por la palanca más barata que lo cerrara de verdad. **Cuatro de los cinco no
+necesitaron ningún build**, y el motivo es una medición, no una opinión:
+
+| bloqueador | cómo se resolvió | evidencia |
+|---|---|---|
+| `Fontconfig_jll` (1 símbolo) | gap aceptado | el sistema es **más nuevo** (2.18.3 vs el 2.17.1 del JLL): `default_langs` desapareció aguas arriba |
+| `Libffi_jll` (2) | gap aceptado | sistema 3.8.0 vs 3.4.7; los dos son entry points de **Go** (`ffi_call_go`, `ffi_prep_go_closure`) |
+| `GettextRuntime_jll` (10) | **dir compuesto**: `libintl.so` construido acá + symlinks al sistema | `find $PREFIX -name 'libintl*'` da sólo headers y jars: **Termux no shipa `libintl`**, y Glib lo necesita |
+| `JpegTurbo_jll` / `XZ_jll` / `Expat_jll` | override normal | los productos que faltan son **ejecutables** (`cjpeg`, `xmlwf`) o una `.a`: leído en el fuente de JLLWrappers, `@init_executable_product` **no valida que el archivo exista**, sólo calcula el path y suma el dir al `PATH` |
+| `LERC_jll` | **artefacto propio** | Termux no empaqueta `libLerc`, y Libtiff lo necesita: compilado de Esri LERC 4.2.0 con el clang++ bionic |
+| `Gettext_jll` (47) | gap aceptado | son **shims de portabilidad de gnulib** (`getrandom`, `copy_file_range`, `getprogname`): bionic ya los tiene, así que su ausencia es el resultado *correcto* |
+| `Libglvnd_jll` (1), `XML2_jll` (236), `Arpack_jll` (2) | gaps aceptados | 1 variable TLS de GL con 3470/3470 y 1044/1044 iguales; libxml2 2.15.4 (más nuevo, **más** símbolos: 1400 vs 1369); 2 hooks Fortran de debug |
+
+Los gaps aceptados viven en `tools/jlls-accepted-gaps.txt` **con su evidencia al lado**, y el
+clasificador sólo los toma si están declarados: un gap nuevo no se puede colar.  Los artefactos
+propios, en `tools/jlls-built-artifacts.txt`.
+
+Y los nombres que el sistema no shipa van en `overrides/aliases.sh`, idempotente, con el mismo
+criterio que `needed-library-aliases.sh` de julia-termux (el consumidor pide el SONAME, no el
+path).
+
+### El estado medido, al cerrar
+
+```
+julia tools/classify-jll.jl --sweep tools/jlls-closure.txt   # 53 JLLs
+  ... needs-jll (gap) 0   ... needs-jll (absent lib) 0
+julia tools/validate-overrides.jl --list tools/jlls-overrides.txt
+  validated: 37 / 37
+  artifact directories after: 26 (0 new)
+```
+
+**Cero `needs-jll` en toda la clausura**, 37 overrides validados cargando los JLLs de verdad, y
+ningún artefacto nuevo bajado durante la validación.
+
+Consumidores reales en el dispositivo, no sólo JLLs:
+
+```
+FFTW.jl      fft/ifft, rfft, plan/apply, dct/idct  → true
+SQLite.jl    INSERT con parámetros + SELECT        → [42, 43]   libsqlite = $PREFIX/lib/libsqlite3.so
+EzXML.jl     parsexml + findfirst                  → "42"       (valida el gap de 236 de XML2)
+Cairo.jl     using Cairo carga Cairo+Pango+Glib+FriBidi+HarfBuzz sin InitError
+```
+
+`Cairo.jl` además mostró que la clausura es **más profunda de lo que uno escribe a mano**: su
+dependencia `Pango_jll` arrastra `FriBidi_jll`, que no estaba en ninguna lista.  Por eso el
+archivo de clausura se **deriva** de lo instalado después de cada barrido
+(`ls ~/.julia/packages/*_jll/*`), en vez de escribirse: cada vuelta converge un nivel más.

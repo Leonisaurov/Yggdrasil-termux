@@ -1,0 +1,27 @@
+# JLLs whose override does NOT point at $PREFIX, because this port built the library.
+#
+# The classifier assumes the system satisfies an override; these three are the exception, and
+# each one is here with the reason.  A JLL listed here gets the verdict `override (built
+# artifact)`: the gap it may still show is against the system, which is no longer what the
+# override uses.
+#
+# Format: one `JLL  <directory>` per line, comments above each entry are its evidence.
+
+# FFTW_jll - Termux's fftw has upstream's split threads layout (`fftw_init_threads` lives in
+#   libfftw3_threads.so) and no NEON codelets, while the JLL and FFTW.jl expect the official
+#   layout.  Built from fftw 3.3.11 with --with-combined-threads --enable-neon; published as
+#   the `fftw-bionic` release of the julia-termux repo, sha256 3c3e8f50... (docs/14 14.1).
+FFTW_jll  /data/data/com.termux/files/home/.local/opt/fftw-bionic
+
+# LERC_jll - Termux packages no libLerc at all, and it is a dependency of Libtiff, which
+#   libwebp needs.  Built from Esri LERC 4.2.0 (source sha256 a1fb593e...) with the bionic
+#   clang++; libLerc.so.4 needs libc++_shared/libc/libm and nothing glibc.
+LERC_jll  /data/data/com.termux/files/home/.local/opt/lerc-bionic
+
+# GettextRuntime_jll - the system has gettext 1.0, which ships libasprintf but NOT libintl:
+#   `find $PREFIX -name 'libintl*'` returns only headers and jars.  Glib and Cairo depend on
+#   this JLL, so the override is a composed directory: libintl.so built here from gettext 1.0
+#   (sha256 85d99b79...), plus symlinks to the system's libasprintf.so and to its
+#   gettext/envsubst/ngettext programs.  Its libasprintf gap (10 symbols) is in
+#   jlls-accepted-gaps.txt.
+GettextRuntime_jll  /data/data/com.termux/files/home/.local/opt/gettext-runtime-bionic

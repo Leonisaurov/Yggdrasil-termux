@@ -287,3 +287,21 @@ depot sin registro, y `git` resolviendo al biónico del prefijo.  Ver
 - El dispositivo quedó restaurado **dos veces** en esta ronda (el rollback intermedio falló porque
   `gh release download` no sobrescribe sin `--clobber` y terminé reinstalando el paquete
   patcheado; con `--clobber` quedó en glibc, 37/37, FFTW y SQLite andando).
+
+## 2026-10-11 — Fork de JLLWrappers y registro propio, publicados
+
+- `github.com/Leonisaurov/JLLWrappers.jl` (fork de JuliaPackaging, `master`): versión **1.8.2**,
+  un patch en `src/toplevel_generators.jl`.  Árbol `cce6644f9d7c7ecddd9249abe7fbbfa326702295`,
+  calculado con `Pkg.GitTools.tree_hash` y cruzado contra `git rev-parse HEAD^{tree}`.
+- `github.com/Leonisaurov/TermuxRegistry`: registro con `J/JLLWrappers/{Package,Versions,Deps,Compat}.toml`.
+  1.8.1 quedó **yanked** (su fallback estaba en una rama inalcanzable).
+- Verificado en el dispositivo con un env limpio: resuelve **1.8.2** del fork
+  (`~/.julia/packages/JLLWrappers/…`), no la 1.8.0 de General.
+- Tres trampas medidas y documentadas en docs/13 §13.7.1: `Pkg.Registry.add("<url>")` interpreta el
+  String como **nombre**; la notación de rangos del registro es **literal** (no caret); y sin
+  `Deps.toml` el paquete se resuelve **sin dependencias**.
+- El host bionic sigue sin funcionar, pero por otra razón y ya diagnosticada (docs/13 §13.9):
+  `Artifacts.artifact_meta` no encuentra entrada para bionic y el override uuid+name se aplica
+  *después* de eso.  Falta un patch fail-closed en la stdlib `Artifacts` + un rebuild.
+- El dispositivo quedó **dos veces** restaurado al paquete publicado (glibc, 37/37) durante la
+  búsqueda; hoy está en el paquete publicado y el patch de plataforma sigue **sin publicar**.

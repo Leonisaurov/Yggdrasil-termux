@@ -99,3 +99,63 @@ reutiliza la `.so` de Termux. Ver [`09-jll-hermetico-y-duplicacion.md`](09-jll-h
 - Esto **no** es O2 (system-providers): O2 hace que el JLL use la lib **ya instalada en
   Termux**. Acá construimos un artefacto **propio** (bionic) y hacemos que Pkg lo use. Son
   complementarios: se puede usar el artefacto bionic **y** un override que apunte a Termux.
+
+## 13.7 El fork y el registro, publicados (2026-10-11)
+
+Para que un host que reporta `libc="bionic"` funcione sin escribir a mano ningún `Overrides.toml`
+hacen falta tres piezas. Dos están hechas y verificadas; la tercera está diagnosticada y es una
+sola función.
+
+| Pieza | Estado |
+| --- | --- |
+| `HostPlatform()` reporta bionic | hecho (patch en `julia-termux`, construido, **sin publicar**) |
+| `JLLWrappers` cae al wrapper `-gnu` en bionic | hecho, publicado y verificado |
+| `Artifacts` encuentra la entrada del artefacto en bionic | **falta** (§13.9) |
+
+**Repos**: `github.com/Leonisaurov/JLLWrappers.jl` (fork, versión **1.8.2**, `master`) y
+`github.com/Leonisaurov/TermuxRegistry` (registro). El fork conserva el UUID de General, así que el
+resolver ve una versión más alta y la prefiere: **nada más del entorno tiene que cambiar**.
+
+```
+Pkg.Registry.add(url = "https://github.com/Leonisaurov/TermuxRegistry")
+```
+
+### 13.7.1 Tres trampas, todas medidas
+
+1. **`Pkg.Registry.add("<url>")` no agrega una URL.** En Pkg 1.12
+   `add(reg::Union{String,RegistrySpec})` trata un String suelto como **nombre**
+   (`RegistrySpec(name = …)`, `Pkg/src/Registry/Registry.jl:44-45`) y muere con *"no path or url
+   specified for registry"*. Hay que usar `url=` o `RegistrySpec(url=…)`.
+2. **La notación de rangos de un registro no es la del `Project.toml`.** Ahí un rango es un
+   `VersionSpec` **literal**: `julia = "1.0.0"` significa *exactamente* 1.0.x y
+   `Preferences = "1.2.1"` significa *exactamente* 1.2.1. Con la notación caret (la del
+   `Project.toml`) el resolver contesta `restricted by julia compatibility requirement` y **cae en
+   silencio a la versión de General**. La forma correcta es la que usa General: `julia = "1"` y
+   `Preferences = "1.2.1 - 1"`.
+3. **`Deps.toml` no es opcional.** Una entrada de registro sin `Deps.toml` resuelve el paquete
+   **sin dependencias** (Pkg no consulta el `Project.toml` del árbol para esto): el JLLWrappers
+   quedó sin `Preferences` y los 37 overrides cayeron en cascada con *"Package JLLWrappers does not
+   have Preferences in its dependencies"*.
+
+### 13.9 La pieza que falta: `Artifacts` y la plataforma
+
+Con el host en bionic el fallo **cambia** y es el definitivo:
+
+```
+Cannot locate artifact 'FFTW' for aarch64-linux-android-cxx11-julia_version+1.12.6
+```
+
+`Artifacts.artifact_slash_lookup` (`stdlib/Artifacts/src/Artifacts.jl:657`) pide
+`artifact_meta(name, dict, toml; platform)` y con bionic **ninguna entrada matchea** → `nothing` →
+error.  El override uuid+name **no puede salvarlo**: `process_overrides` (línea 341) lo traduce a
+overrides *por hash*, y para eso primero hay que haber encontrado una entrada y su hash.
+
+El arreglo es la misma palanca que el fallback del wrapper, pero **fail-closed**: en
+`artifact_meta`, si `select_platform(dl_dict, platform)` devuelve `nothing` y
+`libc(platform) == "bionic"`, reintentar con la plataforma del mismo `arch`/`os` y `libc="glibc"`
+**sólo si ese hash está en `Overrides.toml`**; si no lo está, devolver `nothing` y dejar el error
+fuerte.  Así no hay forma de que un artefacto glibc se cuele: sin override declarado, el JLL no
+carga y lo dice.
+
+Es un patch de stdlib, así que va en el sysimage: cuesta **un rebuild** (~80 min en CI), el mismo
+que ya se hizo para el patch de plataforma.

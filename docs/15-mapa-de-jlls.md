@@ -340,3 +340,23 @@ Con esto, la secuencia para publicar el patch de plataforma queda definida y sin
    está construido y sin publicar.
 3. En el dispositivo: `Pkg.Registry.add` una vez, y verificar que los 37 overrides siguen dando
    37/37 **sin** desarrollar nada a mano.
+
+### 15.7.3 `host_platform` es `nothing` para casi todos los JLLs (medido)
+
+El fallback de `JLLWrappers` (v1 de 1.8.1) estaba en la rama
+`if host_platform !== nothing` y **nunca corría**.  En `toplevel_generators.jl:132-135`:
+
+```julia
+if @isdefined(augment_platform!)
+    const host_platform = augment_platform!(HostPlatform())
+else
+    const host_platform = nothing
+end
+```
+
+`augment_platform!` sólo lo define el JLL que necesita aumentar la plataforma (p. ej. los de CUDA);
+FFTW_jll no lo define, así que `host_platform === nothing` y el código llama al `select_platform` de
+**un** argumento, que usa `HostPlatform()` por dentro.  Medido en el dispositivo con
+`libc="bionic"`: `best_wrapper = nothing` y `libfftw3_path` indefinido, **igual precompilado que
+con `--compiled-modules=no`** — o sea, no era el cache.  El fallback tiene que correr sobre el
+resultado de **las dos** ramas; eso es 1.8.2, y 1.8.1 quedó `yanked`.

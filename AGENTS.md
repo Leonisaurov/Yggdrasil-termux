@@ -72,3 +72,24 @@ fallan en silencio (`the module exposes no *_path binding`).  Hay que forzar
 `Pkg.precompile()` (o cambiar la versión del JLLWrappers, que es lo que hace la distribución).
 Y en general: un JLL que "no expone productos" no dice nada del artefacto ni del override; el
 problema está un nivel más arriba, en la elección del wrapper.
+
+## Trampas del registro propio (medidas 2026-10-11)
+
+- `Pkg.Registry.add("<url>")` **no** agrega una URL: en Pkg 1.12 un String suelto se interpreta
+  como *nombre* de registro (`RegistrySpec(name=…)`) y falla con "no path or url specified for
+  registry".  Usar `Pkg.Registry.add(url = "...")`.
+- En un registro, un rango es un `VersionSpec` **literal**, no notación caret: `julia = "1.0.0"`
+  es exactamente 1.0.x.  Con la notación del `Project.toml` el resolver contesta "restricted by
+  julia compatibility requirement" y **cae en silencio** a la versión de General.  General escribe
+  `julia = "1"` y `Preferences = "1.2.1 - 1"`.
+- Una entrada de registro **sin `Deps.toml`** resuelve el paquete sin dependencias: no se consulta
+  el `Project.toml` del árbol.  Síntoma: "Package X does not have Y in its dependencies" al cargar.
+- Un override uuid+name de `Overrides.toml` se traduce a overrides **por hash**
+  (`Artifacts.process_overrides`), y para eso `artifact_meta` tiene que haber encontrado antes una
+  entrada que matchee la plataforma.  Con `libc="bionic"` no matchea ninguna, así que el override
+  **nunca llega**: no es un fallo del override, es un fallo anterior.
+- `host_platform` es `nothing` en el código generado de todo JLL que no defina
+  `augment_platform!`, y ese camino usa el `select_platform` de un argumento (que usa
+  `HostPlatform()` por dentro).  Cualquier parche de selección de wrapper tiene que cubrir **las dos**
+  ramas: el primer intento cubrió una sola y no se notó hasta medirlo con `--compiled-modules=no`
+  (que descarta el cache como causa).

@@ -245,3 +245,28 @@ depot sin registro, y `git` resolviendo al biónico del prefijo.  Ver
   cinco productos, y con esos artefactos `validate-overrides.jl` da **37/37** con **0
   artefactos nuevos**.  Consumidores: EzXML.jl y `using Cairo` (Cairo+Pango+Glib+FriBidi).
 - Los construidos a mano quedaron como `.handbuilt` al lado de los publicados.
+
+## 2026-10-11 — La plataforma bionic: patch hecho, medido, y la mitad que falta
+
+- `base-binaryplatforms.jl.patch` (gramática: `bionic` en `validate_tags`, `-android` ⇄ bionic en
+  el mapa y en `libc_str`) + la receta fijando `BB_TRIPLET_LIBGFORTRAN_CXXABI=aarch64-linux-android-cxx11`
+  en la línea de `make` (el build corre en un runner Ubuntu, así que el triplete que el sysimage
+  embebe salía `gnu`).  Build **verde** (~80 min) y **sin publicar**.
+- **Medido en el dispositivo, instalando ese paquete**: `Base.BUILD_TRIPLET =
+  aarch64-linux-android-cxx11`, `HostPlatform() = Platform("aarch64","linux"; libc="bionic")`,
+  `Platform(bionic)` construye y renderiza `aarch64-linux-android`.  El patch de plataforma
+  funciona.
+- **Y rompe todo**: `0/37` overrides y los consumidores con `UndefVarError: libfftw3_no_init not
+  defined` / `libsqlite` / `libxml2` / `libcairo`.  Causa medida en
+  `JLLWrappers/src/toplevel_generators.jl`: arma `valid_wrappers` desde el `Artifacts.toml`,
+  elige el mejor match contra el host, y un `libc` distinto **descalifica** → `select_platform`
+  devuelve `nothing` → el código sólo hace `@debug` y **deja los productos sin definir**.
+  Silencio, a un nivel de distancia del síntoma.
+- **Dispositivo restaurado** desde la release `julia-latest` (que no se movió): `HostPlatform()`
+  vuelve a glibc, `37/37`, FFTW/SQLite/EzXML/Cairo andando.
+- La otra mitad, en `docs/15` §15.7.1: un wrapper `aarch64-linux-android.jl` por fork (correcto,
+  cuesta un fork por JLL) o **un JLLWrappers con fallback al `-gnu`** cuando el host es bionic y no
+  hay wrapper bionic — un paquete, no sysimage, así que se prueba en el teléfono sin rebuild.
+- Dos pitfalls nuevos en `AGENTS.md`: el lint del CI corre shellcheck y el gate local no (una
+  asignación con sintaxis de Makefile en un script de shell pasa local y muere en CI), y en la
+  receta las líneas `X := Y` son contenido de `Make.user`, no shell.

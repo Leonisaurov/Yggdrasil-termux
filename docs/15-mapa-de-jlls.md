@@ -259,3 +259,51 @@ raíz del tarball **en la raíz del artefacto**, que es como los empaqueta Binar
 Los dos wrappers de plataforma del fork (`aarch64-linux-android.jl` y `aarch64-linux-bionic.jl`,
 idénticos) se copian del `-gnu`: el contenido es independiente de la plataforma y está medido que
 funciona en el dispositivo (los 37 overrides cargan con el wrapper gnu sin tocar nada).
+
+### 15.7.1 La plataforma no alcanza: falta el wrapper, y falla en silencio (medido)
+
+El patch de plataforma funciona: con el paquete instalado en el dispositivo,
+`HostPlatform()` pasa a `Platform("aarch64","linux"; libc="bionic")` y `Platform(bionic)`
+construye y renderiza como `aarch64-linux-android`.  Pero **rompe todo lo demás**, y la medición
+es clara:
+
+```
+validated: 0 / 37
+FFTW.jl    UndefVarError: `libfftw3_no_init` not defined in `FFTW`
+SQLite.jl  UndefVarError: `libsqlite` not defined in `SQLite.C`
+EzXML.jl   InitError: UndefVarError: `libxml2` not defined in `EzXML`
+Cairo.jl   UndefVarError: `libcairo` not defined in `Cairo`
+```
+
+La causa está en `JLLWrappers/src/toplevel_generators.jl`: arma `valid_wrappers` con las
+plataformas que declara el `Artifacts.toml`, mapea cada una al archivo `src/wrappers/<triplet>.jl`
+que exista, y elige el **mejor match** contra el host.  Con el host en `bionic` no hay ningún
+wrapper bionic en esos paquetes, y un `libc` distinto **descalifica**: `select_platform` devuelve
+`nothing`, y el código lo único que hace es
+
+```julia
+if best_wrapper === nothing
+    @debug("Unable to load ...; unsupported platform ...")
+```
+
+o sea **deja los productos sin definir y sigue**.  De ahí los `UndefVarError` en el consumidor, a
+un nivel de distancia del problema.
+
+Consecuencia, y es la parte que importa para el plan: el patch de plataforma es **necesario pero
+no suficiente**, y **no se puede publicar** hasta que exista la otra mitad.  El paquete con el
+patch quedó construido y **sin publicar** (la release `julia-latest` sigue teniendo el que
+funciona, que es de donde se restauró el dispositivo: 37/37 y los cuatro consumidores de vuelta).
+
+La otra mitad tiene dos formas, y la segunda es la buena:
+
+1. **Un wrapper por JLL**: el fork publica `src/wrappers/aarch64-linux-android.jl` (copia del
+   `-gnu`, que es independiente de la plataforma) junto a la entrada `bionic` de su
+   `Artifacts.toml`.  Con el `libc_mapping` parcheado, `parse_wrapper_platform("aarch64-linux-android")`
+   devuelve exactamente la plataforma bionic, así que el match es exacto y el wrapper carga.  Es
+   el camino correcto pero cuesta un fork por JLL.
+2. **Un JLLWrappers con fallback**, que es lo que arregla a *todos* los JLLs de una vez: si el
+   host es bionic y no hay wrapper bionic, usar el `-gnu` (los productos son independientes de la
+   plataforma y los flags de `dlopen` del wrapper gnu están medidos funcionando en el dispositivo:
+   los 37 overrides cargan con él).  `JLLWrappers` es un **paquete**, no parte del sysimage, así
+   que esto se puede probar en el teléfono sin rebuild: se edita el del depot, se reinstala el
+   paquete con el patch (ya está bajado) y se corre la misma validación de 37.

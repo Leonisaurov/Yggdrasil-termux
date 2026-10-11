@@ -73,3 +73,52 @@ artefacto sea, en realidad, las libs de Termux. Pero son dos decisiones separada
 - **Yggdrasil construye artefactos bionic** → objetivo principal (el JLL **carga**).
 - **La duplicación se acepta**; si molesta, `Overrides.toml` la elimina lib por lib.
 - **La duplicación NO es el problema a resolver**: el problema es que hoy **nada carga**.
+
+---
+
+## 9.7 Medido en el dispositivo: el override evita la descarga, y dónde está el límite (2026-10-11)
+
+Caso `FFTW_jll` (uuid `f5851436-0d7a-5f13-b9de-f02708fd171a`, artefacto `FFTW`, hash
+`d6f6a596f02a9c173bc5d1c26b680ba8d2183839`), apartando el artefacto del depot con `mv`
+(reversible) y observando si volvía a bajarse.
+
+| Forma del override en `~/.julia/artifacts/Overrides.toml` | ¿Evita la descarga? | Por qué |
+|---|---|---|
+| `[<uuid>]` + `FFTW = "/data/…/usr"` | **NO** | `load_overrides` lo dice: *"all redirects mechanistically happen through the hash overrides"*.  La forma UUID+nombre se intercepta al cargar el `Artifacts.toml` (`process_overrides`, `Artifacts.jl:341`) y **recién ahí** genera la entrada de hash.  En el camino de descarga de Pkg, `select_downloadable_artifacts` y `ensure_artifact_installed` se llaman **sin `pkg_uuid`** (`Pkg/src/Artifacts.jl:576/578`) → `process_overrides` nunca corre → no hay entrada de hash → **baja igual** (`Installing 1 artifacts` / `Installed artifact FFTW 1.2 MiB`) |
+| `"d6f6a596…" = "/data/…/usr"` | **SÍ** | `query_override(hash)` la lee del archivo dentro de `artifact_paths`, y `ensure_artifact_installed` hace `if !artifact_exists(hash)` con `artifact_exists(hash; honor_overrides=true)` (`Artifacts.jl:270`) → **no baja nada** (depot vacío) |
+
+Consecuencia de diseño: la forma **estable** (UUID+nombre, que no cambia con la versión
+del JLL) es justamente la que **no** evita la descarga, y la que funciona (hash) cambia
+con cada versión.  Hacer que la estable sirva es un parche chico del lado de
+`Pkg`/`Artifacts` (pasar `pkg_uuid`, o consultar los overrides UUID+nombre antes de
+bajar) — **de julia-termux, no de Yggdrasil**.
+
+### El límite no es bionic: es la superficie de productos
+
+Con el override por hash, `FFTW_jll.libfftw3_path` pasó a
+`/data/data/com.termux/files/usr/lib/libfftw3.so` (la bionic de Termux) y el JLL la
+cargó.  Es decir, **el override no solo ahorra espacio: es lo que hace usable un JLL en
+bionic**, porque el `.so` glibc del artefacto nunca se carga — que es exactamente cómo
+se esquiva `libm.so.6` / `@GLIBC_2.17`.
+
+Lo que el override **no** puede arreglar apareció enseguida:
+
+```
+ERROR: could not load symbol "fftw_init_threads": undefined symbol: fftw_init_threads
+```
+
+El artefacto del JLL trae **solo** `libfftw3.so*` y `libfftw3f.so*`, y su `libfftw3`
+**exporta** `fftw_init_threads` (la receta de BinaryBuilder fusiona el API de threads);
+Termux usa el layout de upstream: `libfftw3.so` **sin** ese símbolo y el símbolo en
+`libfftw3_threads.so`.
+
+**Regla**: el override sirve si y solo si el paquete del sistema expone **los mismos
+productos, en las mismas rutas, con la misma superficie de símbolos** que el JLL declara.
+Si no, no hay override que valga: eso lo tiene que producir Yggdrasil (un JLL bionic con
+el layout del JLL oficial) o un shim chico.
+
+### La pregunta que decide, por librería
+
+1. ¿Termux ya shipa la librería? (`pacman -Q <pkg>`) — si no, es caso Yggdrasil.
+2. ¿El paquete del sistema expone los productos y símbolos que el JLL declara? — override, cero descarga y cero build.
+3. Si no — Yggdrasil con el layout del JLL oficial, o un shim bionic.

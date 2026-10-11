@@ -307,3 +307,36 @@ La otra mitad tiene dos formas, y la segunda es la buena:
    los 37 overrides cargan con él).  `JLLWrappers` es un **paquete**, no parte del sysimage, así
    que esto se puede probar en el teléfono sin rebuild: se edita el del depot, se reinstala el
    paquete con el patch (ya está bajado) y se corre la misma validación de 37.
+
+### 15.7.2 El fallback funciona, y necesita re-precompilar (medido)
+
+`patches/JLLWrappers-bionic-fallback.patch` (27 líneas en
+`JLLWrappers/src/toplevel_generators.jl`): cuando el host es bionic y `select_platform` no
+encuentra wrapper, elige el del **mismo `arch` y `os`**, prefiriendo glibc.  Medido en el
+dispositivo con el julia que reporta `libc="bionic"` y ese JLLWrappers desarrollado en el entorno:
+
+```
+best_wrapper  = .../FFTW_jll/CnY1I/src/wrappers/aarch64-linux-gnu.jl     <- el fallback
+libfftw3_path = /data/data/com.termux/files/home/.local/opt/fftw-bionic/lib/libfftw3.so
+```
+
+Es decir: el wrapper gnu (que declara los productos y los flags de `dlopen`, nada específico de la
+plataforma) y el artefacto saliendo del `Overrides.toml` — exactamente lo que hacía falta para que
+el patch de plataforma **no rompa nada**.
+
+**La trampa, y es la razón por la que el primer intento dio 0/37**: el código que genera
+`@generate_main_file` se ejecuta en el **cuerpo del módulo** del JLL, así que su resultado queda
+horneado en el `precompile` cache.  `Pkg.develop` del JLLWrappers parcheado **no invalida** ese
+cache: los JLLs siguen usando el código viejo y fallan igual, en silencio ("the module exposes no
+`*_path` binding").  Con `Pkg.precompile()` forzado, funciona.  En la distribución esto no es un
+problema: el JLLWrappers parcheado entra al registro con **versión mayor**, y eso sí cambia la
+clave del cache de cada JLL.
+
+Con esto, la secuencia para publicar el patch de plataforma queda definida y sin incógnitas:
+
+1. Fork de `JLLWrappers` con el patch, versión `+1` sobre la del General, y una entrada en el
+   registro propio.
+2. Publicar el julia con el patch de plataforma (`build-package.yml` con `publish=true`), que hoy
+   está construido y sin publicar.
+3. En el dispositivo: `Pkg.Registry.add` una vez, y verificar que los 37 overrides siguen dando
+   37/37 **sin** desarrollar nada a mano.

@@ -1,0 +1,36 @@
+--- a/src/toplevel_generators.jl
++++ b/src/toplevel_generators.jl
+@@ -187,7 +187,32 @@
+                 # The two argument `select_platform` is notably slower, so micro-optimize this by
+                 # only calling it when necessary.
+                 if host_platform !== nothing
+-                    select_platform(valid_wrappers, host_platform)
++                    # Yggdrasil/Termux port: a bionic host has no bionic wrapper in the JLLs the
++                    # General registry ships, and select_platform disqualifies a different libc,
++                    # so it returned nothing and the products were left undefined - silently, with
++                    # only a @debug (measured on the device: UndefVarError: `libfftw3_no_init` in
++                    # FFTW, `libsqlite` in SQLite, `libxml2` in EzXML, `libcairo` in Cairo).
++                    #
++                    # The wrapper only declares product paths relative to artifact_dir and the
++                    # dlopen flags, and the -gnu one is measured working on bionic: the 37
++                    # overrides load through it.  So when the host is bionic and nothing matches,
++                    # fall back to the same arch and os, preferring glibc.  The artifact itself
++                    # still comes from the JLL's own Artifacts.toml entry (the registry path) or
++                    # from Overrides.toml - never from this choice.
++                    best = select_platform(valid_wrappers, host_platform)
++                    if best === nothing && Base.BinaryPlatforms.libc(host_platform) == "bionic"
++                        for prefer_glibc in (true, false)
++                            for (p, f) in valid_wrappers
++                                Base.BinaryPlatforms.arch(p) == Base.BinaryPlatforms.arch(host_platform) || continue
++                                Base.BinaryPlatforms.os(p) == Base.BinaryPlatforms.os(host_platform) || continue
++                                prefer_glibc && Base.BinaryPlatforms.libc(p) != "glibc" && continue
++                                best = f
++                                break
++                            end
++                            best === nothing || break
++                        end
++                    end
++                    best
+                 else
+                     select_platform(valid_wrappers)
+                 end

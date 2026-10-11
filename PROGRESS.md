@@ -270,3 +270,20 @@ depot sin registro, y `git` resolviendo al biónico del prefijo.  Ver
 - Dos pitfalls nuevos en `AGENTS.md`: el lint del CI corre shellcheck y el gate local no (una
   asignación con sintaxis de Makefile en un script de shell pasa local y muere en CI), y en la
   receta las líneas `X := Y` son contenido de `Make.user`, no shell.
+
+## 2026-10-11 — El fallback de JLLWrappers: funciona, y la trampa del precompile cache
+
+- `patches/JLLWrappers-bionic-fallback.patch` (27 líneas en `toplevel_generators.jl`): si el host
+  es bionic y `select_platform` no encuentra wrapper, usa el del mismo `arch`/`os` prefiriendo
+  glibc.  **Medido en el dispositivo** con el julia bionic + el JLLWrappers desarrollado:
+  `best_wrapper = .../aarch64-linux-gnu.jl` y `libfftw3_path = …/fftw-bionic/…`, o sea el wrapper
+  gnu y el artefacto saliendo del override.  El patch de plataforma deja de romper nada.
+- **La trampa** (y el motivo del primer 0/37): el código que genera `@generate_main_file` corre en
+  el cuerpo del módulo del JLL, así que queda horneado en su `precompile` cache; `Pkg.develop` del
+  JLLWrappers parcheado **no lo invalida** y los JLLs siguen con el código viejo, fallando en
+  silencio ("the module exposes no `*_path` binding").  Con `Pkg.precompile()` forzado funciona.
+  En la distribución no molesta: la versión mayor del JLLWrappers parcheado cambia la clave.
+- `tools/validate-overrides.jl` tiene `--jllwrappers <path>` para probar esto sin tocar el depot.
+- El dispositivo quedó restaurado **dos veces** en esta ronda (el rollback intermedio falló porque
+  `gh release download` no sobrescribe sin `--clobber` y terminé reinstalando el paquete
+  patcheado; con `--clobber` quedó en glibc, 37/37, FFTW y SQLite andando).

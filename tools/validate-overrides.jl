@@ -28,6 +28,10 @@ function parse_args(args)
     prefix = get(ENV, "PREFIX", "/data/data/com.termux/files/usr")
     jlls = String[]
     list = nothing
+    # A local JLLWrappers to develop into the temp environment before adding the JLLs.  Used to
+    # test patches/JLLWrappers-bionic-fallback.patch on the device: with it, a bionic host with no
+    # bionic wrapper falls back to the -gnu one instead of leaving every product undefined.
+    jllwrappers = nothing
     i = 1
     while i <= length(args)
         a = args[i]
@@ -35,6 +39,8 @@ function parse_args(args)
             prefix = args[i + 1]; i += 2
         elseif a == "--list" && i < length(args)
             list = args[i + 1]; i += 2
+        elseif a == "--jllwrappers" && i < length(args)
+            jllwrappers = args[i + 1]; i += 2
         else
             push!(jlls, a); i += 1
         end
@@ -46,10 +52,10 @@ function parse_args(args)
             push!(jlls, split(s)[1])
         end
     end
-    return prefix, jlls
+    return prefix, jllwrappers, jlls
 end
 
-const PREFIX, JLLS = parse_args(ARGS)
+const PREFIX, JLLWRAPPERS, JLLS = parse_args(ARGS)
 
 # The artifact directories of the first depot in the path - where Overrides.toml lives and
 # where a download would land.
@@ -95,6 +101,10 @@ println("artifact directories before: $(length(before))")
 
 env = mktempdir()
 Pkg.activate(env; io = devnull)
+if JLLWRAPPERS !== nothing
+    println("developing a local JLLWrappers: ", JLLWRAPPERS)
+    Pkg.develop(path = JLLWRAPPERS; io = devnull)
+end
 if length(JLLS) > 1
     println("\ninstalling $(length(JLLS)) JLLs into one environment…")
     try

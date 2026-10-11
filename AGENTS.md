@@ -62,3 +62,13 @@ en `docs/04-plan.md`.
 | cómo se distribuye/consume | `docs/13-distribucion-y-consumo.md` |
 | todas las URLs | `docs/08-referencias.md` |
 | el port de Julia que lo motivó | `../Julia/julia-termux/` |
+
+## El código que genera un macro de JLLWrappers queda en el precompile cache del JLL
+
+`@generate_main_file` emite el bloque que elige el wrapper en el **cuerpo del módulo** del JLL, así
+que su resultado se hornea al precompilar.  Consecuencia medida: desarrollar un `JLLWrappers`
+parcheado en un entorno y agregar los JLLs **no cambia nada** — siguen usando el código viejo y
+fallan en silencio (`the module exposes no *_path binding`).  Hay que forzar
+`Pkg.precompile()` (o cambiar la versión del JLLWrappers, que es lo que hace la distribución).
+Y en general: un JLL que "no expone productos" no dice nada del artefacto ni del override; el
+problema está un nivel más arriba, en la elección del wrapper.

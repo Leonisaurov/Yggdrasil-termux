@@ -115,3 +115,18 @@ dispositivo tiene y un prefijo solo-.deb no, `bash -e` tragándose el rc de `jul
 el `Pkg.precompile()` que clona el registro, `JULIA_PKG_OFFLINE` que no alcanza con
 depot sin registro, y `git` resolviendo al biónico del prefijo.  Ver
 `../Julia/julia-termux/PROGRESS.md` (Pendientes 7).
+
+## 2026-10-11 — Clasificación de JLLs y el parche de consumo
+
+- `tools/classify-jll.jl`: clasifica por JLL si la librería de Termux satisface lo que el
+  JLL declara (productos, SONAMEs, superficie de símbolos), sin cargar el JLL (su `__init__`
+  hace `dlopen` del artefacto glibc y revienta acá).  Primera tabla medida: `FFTW_jll`
+  needs-jll, `libpng_jll` override-needs-alias, seis stdlibs system-stub.
+- Hallazgo estructural: **los stdlib JLLs de un Julia de fuentes ya son stubs de upstream**
+  (`dlopen` por soname, `artifact_dir = dirname(Sys.BINDIR)`, cero artefactos en el depot).
+  La política "no bajes, usá la del sistema" ya existe para los stdlibs; falta generalizarla
+  a los JLLs de la registry.
+- Veredicto validado: `libpng` predijo "alcanza un symlink" y con el artefacto apartado la
+  JLL cargó la libpng bionic del sistema (`ccall png_access_version_number` → 10659).
+- `docs/09` §9.7: el override por hash evita la descarga; el UUID+nombre no (Pkg pierde el
+  uuid).  El parche de consumo vive en julia-termux y quedó registrado en `docs/14`.

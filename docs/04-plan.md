@@ -32,6 +32,22 @@ aceptación** (`06-verificacion.md`). No se pasa a la siguiente sin ese criterio
 
 ---
 
+## Reordenamiento (2026-10-11): primero el consumo, después producir
+
+La Fase 1 de abajo (el JLL a mano para `libfftw3`) se escribió antes de medir.  Con el
+clasificador (`tools/classify-jll.jl`) y los overrides medidos, el orden correcto es:
+
+1. **Capa de consumo** (julia-termux): el override por UUID+nombre + el parche de `Pkg`
+   que lo hace efectivo antes de bajar.  Ya está: `docs/14`, §9.7.
+2. **Clasificar** cada JLL candidato: `override` / `override-needs-alias` / `needs-jll` /
+   `system-stub` (`docs/14`).
+3. **Producir** (Yggdrasil) **solo** para el conjunto `needs-jll` — hoy, del seed medido,
+   únicamente `FFTW_jll`, y su gap es configuración de build (threads + NEON), así que
+   incluso ahí hay que decidir entre JLL propio, pedir esas opciones al paquete de Termux,
+   o un shim.
+
+Producir sin la capa de consumo es lo que duplicaría librerías que Termux ya tiene.
+
 ## Fase 1 — Plataforma Android/bionic en `Base.BinaryPlatforms`
 
 **Objetivo**: que Julia pueda *nombrar* la plataforma y que el host la reporte.

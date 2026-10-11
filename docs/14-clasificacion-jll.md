@@ -60,6 +60,15 @@ ccall png_access_version_number = 10659
 
 Una JLL **funcionando en bionic sin compilar nada**, y el artefacto no volvió a bajarse.
 
+## El lado del consumo ya tiene parche (2026-10-11)
+
+La forma **estable** de override (UUID+nombre) no evitaba la descarga porque el camino de
+descarga de `Pkg` perdía el uuid; `julia-termux` ahora lo parchea
+(`packages/julia/patches/Pkg-Operations.jl.patch`, aplicado a la copia instalada porque Pkg
+es un submodule).  Con eso la tabla JLL→paquete de Termux se publica **una vez** y no se
+reescribe con cada versión del JLL — que era el motivo por el que la forma por hash, aunque
+funciona, no servía como política.
+
 ## La regla, y el reparto
 
 1. ¿Termux shipa la librería?  Si no → **Yggdrasil**.

@@ -92,6 +92,7 @@ del JLL) es justamente la que **no** evita la descarga, y la que funciona (hash)
 con cada versión.  Hacer que la estable sirva es un parche chico del lado de
 `Pkg`/`Artifacts` (pasar `pkg_uuid`, o consultar los overrides UUID+nombre antes de
 bajar) — **de julia-termux, no de Yggdrasil**.
+  **Ese parche existe desde 2026-10-11**: `packages/julia/patches/Pkg-Operations.jl.patch` en julia-termux, aplicado a la copia instalada (Pkg es un submodule, así que no hay archivo que parchear antes de `make`), con A/B medido en el dispositivo: el `Pkg` original baja 316.6 KiB, el parcheado no baja nada.
 
 ### El límite no es bionic: es la superficie de productos
 

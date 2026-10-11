@@ -49,6 +49,8 @@ Los JLL son **herméticos**: el wrapper hace `joinpath(artifact_dir, "lib/libX.s
 | [`docs/11-fallos-y-limitaciones.md`](docs/11-fallos-y-limitaciones.md) | **Catálogo de fallos conocidos, limitaciones y troubleshooting** (con [MEDIDO]/[CITADO]). |
 | [`docs/12-diseno-plataforma-bionic.md`](docs/12-diseno-plataforma-bionic.md) | **Spec exacta** de la plataforma bionic: los 3 cambios de `binaryplatforms.jl`, el tag, la entrada `Artifacts.toml`, el toolchain. |
 | [`docs/13-distribucion-y-consumo.md`](docs/13-distribucion-y-consumo.md) | Cómo se distribuye y consume: registro propio vs `Overrides.toml`, hosting y licencias. |
+| [`docs/14-clasificacion-jll.md`](docs/14-clasificacion-jll.md) | **La regla por JLL**: ¿override, symlink o Yggdrasil? Con el primer `needs-jll` resuelto (el artefacto bionic de FFTW). |
+| [`docs/15-mapa-de-jlls.md`](docs/15-mapa-de-jlls.md) | **El mapa medido**: 43 JLLs clasificados, 23 overrides gratis validados en el dispositivo, 7 con gap real y los 5 bloqueadores raíz. |
 
 ## Cómo se usaría este repo
 

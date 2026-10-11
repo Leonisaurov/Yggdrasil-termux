@@ -1,0 +1,51 @@
+# The JLLs whose product is already in $PREFIX — the "Termux ships it" universe.
+#
+# That is the only universe where the no-duplication rule can be applied at all: if the
+# library is not there, the question "can the system satisfy the JLL?" has no answer other
+# than no, and the item belongs in a different list (`pkg install`, or Yggdrasil).
+#
+# Selected on 2026-10-11 by listing `$PREFIX/lib/*.so*` on the device (1877 files) and
+# keeping the JLLs whose declared product is among them.  FFTW_jll and libpng_jll are the
+# two cases docs/14 already documents, and they are first on purpose: they must come back
+# with the same verdicts, which makes this file a regression test for the tool as well.
+#
+# Run it with a scratch depot (see the header of classify-jll.jl) so the comparison is
+# against the official artifacts and the downloads do not land in the user's depot.
+
+# the two measured cases (must reproduce docs/14)
+FFTW_jll
+libpng_jll
+
+# images / plotting stack
+Cairo_jll
+Pixman_jll
+Fontconfig_jll
+FreeType2_jll
+HarfBuzz_jll
+Glib_jll
+JpegTurbo_jll
+Libtiff_jll
+libwebp_jll
+
+# data / text / compression
+XML2_jll
+Expat_jll
+Zstd_jll
+Bzip2_jll
+XZ_jll
+SQLite_jll
+PCRE2_jll
+
+# crypto / network / math
+OpenSSL_jll
+LibCURL_jll
+LibGit2_jll
+libsodium_jll
+Arpack_jll
+
+# stdlib JLLs that are stubs or have artifact metadata (cheap rows, and they are what the
+# port already resolves without downloading anything)
+GMP_jll
+MPFR_jll
+Zlib_jll
+OpenBLAS_jll

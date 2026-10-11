@@ -26,13 +26,43 @@
 # how much of it each JLL costs today.
 #
 # Usage:
-#   julia classify-jll.jl [--prefix DIR] [--show-symbols N] JLL [JLL ...]
+#   julia classify-jll.jl [--prefix DIR] [--show-symbols N] [--md] JLL [JLL ...]
+#   julia classify-jll.jl --sweep tools/jlls-sweep.txt [--md]
 #
-# Verdicts:
-#   override            every product exists, its SONAME resolves, no missing symbols
-#   override-with-gaps  products exist but the official build exports symbols this build
-#                       does not: the consumer may need them (this is FFTW)
-#   needs-jll           a declared product is missing from the system root
+# Run it against a scratch depot, not the real one:
+#   mkdir -p "$TMPDIR/ygg-depot" && cp -a ~/.julia/registries "$TMPDIR/ygg-depot/"
+#   JULIA_DEPOT_PATH="$TMPDIR/ygg-depot" JULIA_PKG_PRECOMPILE_AUTO=0 \
+#       julia tools/classify-jll.jl --sweep tools/jlls-sweep.txt --md
+# Two reasons.  The comparison has to be against the **official** artifact: an
+# `Overrides.toml` in the real depot redirects a JLL to a local build (FFTW's does), and
+# then this script would compare that build against $PREFIX - the artifact answering the
+# question would be the answer.  And the artifacts it downloads to measure are exactly the
+# duplication the project is about, so they belong in a scratch depot that is deleted
+# afterwards, not in the user's.
+#
+# `--sweep FILE` reads one JLL per line (`#` comments allowed) and installs them into a
+# single shared environment, so a whole stack is one resolve instead of N.  `--md` adds a
+# markdown table of the findings, which is how docs/15 is written - the table in the docs
+# is generated, not transcribed.
+#
+# Verdicts, cheapest lever first:
+#   system-stub         stdlib stub: already resolves to the system, downloads nothing
+#   needs-alias         a stub whose soname nothing answers (a symlink fixes it)
+#   override            every product exists, its SONAME resolves, no missing symbols:
+#                       one Overrides.toml line stops the download, nothing is built
+#   override-needs-alias  same, plus a name to create (a symlink answers it)
+#   needs-jll (absent lib)  the system root does not have a declared *library* at all.
+#                       Read the note: this is either "the Termux package is not installed"
+#                       (then the lever is `pkg install`, still nothing to build) or "Termux
+#                       does not package it" (then it is Yggdrasil's job)
+#   needs-jll (absent exe)  the library is there, but the JLL also declares an executable or
+#                       a static file the system root lacks.  The library is overridable;
+#                       JLLWrappers' __init__ still checks every product, so the JLL will not
+#                       load until that program exists too (measured: JpegTurbo's
+#                       cjpeg/djpeg/jpegtran, Expat's xmlwf, XZ's liblzma.a)
+#   needs-jll (gap)     the product is there but exports less API than the official build:
+#                       a different feature set, and no name will conjure the symbols.
+#                       This is FFTW, and it is the case that produces artifacts
 #   no-artifact         no artifact matches this platform: the JLL cannot be used here
 #                       without an override in the first place
 #
@@ -46,6 +76,8 @@ using Base.BinaryPlatforms: HostPlatform
 function parse_args(args)
     prefix = get(ENV, "PREFIX", "/data/data/com.termux/files/usr")
     show_symbols = 5
+    markdown = false
+    sweep = nothing
     jlls = String[]
     i = 1
     while i <= length(args)
@@ -54,14 +86,25 @@ function parse_args(args)
             prefix = args[i + 1]; i += 2
         elseif a == "--show-symbols" && i < length(args)
             show_symbols = parse(Int, args[i + 1]); i += 2
+        elseif a == "--sweep" && i < length(args)
+            sweep = args[i + 1]; i += 2
+        elseif a == "--md"
+            markdown = true; i += 1
         else
             push!(jlls, a); i += 1
         end
     end
-    return prefix, show_symbols, jlls
+    if sweep !== nothing
+        for line in eachline(sweep)
+            s = strip(line)
+            (isempty(s) || startswith(s, "#")) && continue
+            push!(jlls, split(s)[1])
+        end
+    end
+    return prefix, show_symbols, markdown, jlls
 end
 
-const PREFIX, SHOW, JLLS = parse_args(ARGS)
+const PREFIX, SHOW, MARKDOWN, JLLS = parse_args(ARGS)
 
 function sh(cmd::Cmd)
     out = IOBuffer()
@@ -76,28 +119,55 @@ function defined_symbols(path::AbstractString)
     syms = Set{String}()
     for line in split(out, '\n')
         f = split(strip(line))
+        length(f) == 3 || continue
+        # Weak symbols are optional by definition, so a missing one can never break a
+        # consumer; absolute ones are linker artifacts - measured on the XZ artifact,
+        # `XZ_5.1.2alpha` is type `A`, a version node.  Both were reported as missing API
+        # by the first sweep.
+        f[2] in ("A", "W", "V", "w", "v", "U") && continue
         # nm prints `symbol@@VERSION` (and `symbol@VERSION` for a single one): the version
         # tag is a property of the build, not a different symbol.  Without this, libpng
         # reported one "missing" symbol that was only `PNG16_0@@PNG16_0`.
-        length(f) == 3 && push!(syms, replace(f[3], r"@.*$" => ""))
+        push!(syms, replace(f[3], r"@.*$" => ""))
     end
     return syms
 end
 
-# Linker and C-runtime bookkeeping, not API: every build has its own set of these, and
-# comparing them says nothing about whether a consumer would find what it asks for.  It
-# was 5 of the 240 symbols FFTW's artifact showed as "missing" the first time this ran.
-const ELF_BOOKKEEPING = Set(["__bss_start", "_edata", "_end", "_fini", "_init",
-    "__gmon_start__", "_ITM_deregisterTMCloneTable", "_ITM_registerTMCloneTable",
-    "__cxa_finalize", "__libc_csu_fini", "__libc_csu_init", "_dl_relocate_static_pie"])
+# Linker bookkeeping, not API.  Measured on the official artifacts: every one of them
+# exports `__bss_end__`, `__bss_start__`, `__end__`, `_bss_end__` as type `B`, and Termux's
+# builds do not - so only a name filter stops those four from turning ten libraries into
+# false `needs-jll` verdicts.  The first sweep did exactly that; this is the fix.
+const ELF_BOOKKEEPING = r"^_+(bss_start|bss_end|end|edata|data_start|init|fini|dso_handle|TMC_END__|IO_stdin_used|gmon_start__|ITM_.*|cxa_.*|libc_csu_.*|dl_relocate_static_pie|stack_chk.*)_*$"
 
-# A version node (`PNG16_0`, `GLIBC_2.17`) is the name of a version script entry, not
-# something a consumer can call: libpng's artifact exports one, and counting it made the
+# A version node (`PNG16_0`, `GLIBC_2.17`, `XZ_5.1.2alpha`) names a version script entry,
+# not something a consumer can call: libpng's artifact exports one, and counting it made the
 # verdict look like a missing API symbol when the build was fine.
-const VERSION_NODE = r"^[A-Za-z_][A-Za-z0-9_]*_[0-9]+(\.[0-9]+)*$"
+const VERSION_NODE = r"^[A-Za-z_][A-Za-z0-9_]*_[0-9]+(\.[0-9]+)*[A-Za-z]*$"
 
 "The symbols a consumer could actually call: the artifact's, minus the bookkeeping."
-api_symbols(syms) = Set{String}(s for s in syms if !(s in ELF_BOOKKEEPING) && !occursin(VERSION_NODE, s))
+api_symbols(syms) = Set{String}(s for s in syms if !occursin(ELF_BOOKKEEPING, s) && !occursin(VERSION_NODE, s))
+
+"""
+True when the system library defines the symbol but does not export it dynamically.
+
+The difference matters for the fix: a symbol the build *lacks* means a different feature set
+(rebuild or shim), while one it merely *hides* - Termux builds with a version script or
+-fvisibility=hidden - means the same source compiled with a smaller export surface, and the
+answer is to make the system export it.  Measured on fontconfig: `default_langs` is in
+Termux's libfontconfig but not in its dynamic table, and that single data symbol is what
+keeps the whole Cairo stack from being overridable.  Inconclusive when the library is
+stripped, which is common in Termux packages.
+"""
+function hidden_in_system(path::AbstractString, sym::String)
+    ok, out = sh(`nm --defined-only $path`)
+    ok || return false
+    for line in split(out, '\n')
+        f = split(strip(line))
+        length(f) == 3 || continue
+        replace(f[3], r"@.*$" => "") == sym && return true
+    end
+    return false
+end
 
 "SONAME of an ELF shared object, or \"\" when it has none."
 function soname(path::AbstractString)
@@ -183,15 +253,51 @@ end
 # libgmp.so), so a soname found there is a name the port created, not one Termux ships.
 const SONAME_DIRS = [joinpath(PREFIX, "lib"), joinpath(PREFIX, "lib", "julia"), "/system/lib64"]
 
-function classify(jll::String)
+const VERDICT_LABEL = Dict(
+    :override => "override",
+    :override_needs_alias => "override-needs-alias",
+    :needs_jll_absent => "needs-jll (absent lib)",
+    :needs_jll_exe => "needs-jll (absent exe)",
+    :needs_jll_gap => "needs-jll (gap)",
+    :system_stub => "system-stub",
+    :needs_alias => "needs-alias",
+    :no_artifact => "no-artifact",
+    :no_products => "no-products",
+    :error => "error",
+)
+
+"Everything one classification learned, so a sweep can aggregate instead of re-reading logs."
+struct Finding
+    jll::String
+    uuid::String                             # the JLL's uuid: what the stable override is keyed by
+    verdict::Symbol
+    artifacts::Vector{Tuple{String,String}}  # (name, git-tree-sha1) of the official artifact
+    kb::Int                                  # its size on disk: the duplication this JLL costs
+    products::Vector{String}
+    absent::Vector{String}                   # declared products the system root does not have
+    gaps::Dict{String,Vector{String}}        # product -> API symbols the system build lacks
+    sonames::Dict{String,String}             # product -> soname missing next to the system lib
+    note::String
+end
+
+empty_finding(jll, verdict, note) = Finding(jll, "", verdict, Tuple{String,String}[], 0, String[],
+    String[], Dict{String,Vector{String}}(), Dict{String,String}(), note)
+
+"""
+Classify one JLL.  With `env` the caller owns the environment (the sweep installs a whole
+stack once); without it a throwaway one is made, which is what a single-JLL run wants.
+"""
+function classify(jll::String; env::Union{Nothing,String} = nothing)
     println("\n=== $jll ===")
-    env = mktempdir()
-    Pkg.activate(env; io = devnull)
-    try
-        Pkg.add(jll; io = devnull)
-    catch err
-        println("  COULD NOT INSTALL: ", first(sprint(showerror, err), 200))
-        return :error
+    if env === nothing
+        env = mktempdir()
+        Pkg.activate(env; io = devnull)
+        try
+            Pkg.add(jll; io = devnull)
+        catch err
+            println("  COULD NOT INSTALL: ", first(sprint(showerror, err), 200))
+            return empty_finding(jll, :error, "install failed")
+        end
     end
     pkgid = Base.identify_package(jll)
     # Not Pkg.dependencies()[pkgid]: that reflects a manifest snapshot this process may
@@ -200,7 +306,7 @@ function classify(jll::String)
     entry = Base.find_package(jll)
     if entry === nothing
         println("  could not locate $jll on the load path")
-        return :error
+        return empty_finding(jll, :error, "not on the load path")
     end
     jll_dir = dirname(dirname(entry))
 
@@ -214,23 +320,27 @@ function classify(jll::String)
         println("  stdlib stub (upstream's source-build design): dlopen by soname, no artifact")
         if isempty(prods)
             println("  could not read its sonames")
-            return :error
+            return empty_finding(jll, :error, "stub without sonames")
         end
-        verdict = :system_stub
+        f = empty_finding(jll, :system_stub, "stdlib stub: dlopen by soname, no artifact")
+        f = Finding(f.jll, pkgid.uuid === nothing ? "" : string(pkgid.uuid), f.verdict,
+                    f.artifacts, f.kb, sort(collect(keys(prods))), f.absent,
+                    f.gaps, f.sonames, f.note)
         for name in sort(collect(keys(prods)))
             son = prods[name].soname
             found = findfirst(d -> ispath(joinpath(d, son)), SONAME_DIRS)
             if found === nothing
                 println("  MISSING  $name wants $son, which nothing answers")
-                verdict = :needs_alias
+                f = Finding(f.jll, f.uuid, :needs_alias, f.artifacts, f.kb, f.products, f.absent,
+                            f.gaps, f.sonames, "a stub whose soname nothing answers")
             else
                 dir = SONAME_DIRS[found]
                 note = dir == joinpath(PREFIX, "lib", "julia") ? "  <- created by the recipe's alias mechanism" : ""
                 println("  $(rpad(name, 16)) $son  answered by $dir$note")
             end
         end
-        println("  => verdict: ", verdict === :system_stub ? "system-stub" : "needs-alias")
-        return verdict
+        println("  => verdict: ", VERDICT_LABEL[f.verdict])
+        return f
     end
     # find_artifacts_toml only looks for Artifacts.toml, and every *stdlib* JLL (Zlib,
     # GMP, MPFR, OpenSSL, LibCURL, LibGit2, OpenBLAS …) keeps its metadata in
@@ -244,7 +354,7 @@ function classify(jll::String)
     end
     if at === nothing
         println("  no Artifacts.toml: this JLL ships no artifact")
-        return :no_artifact
+        return empty_finding(jll, :no_artifact, "no Artifacts.toml")
     end
     is_stdlib = basename(at) == "StdlibArtifacts.toml"
     is_stdlib && println("  stdlib JLL with artifact metadata (not a stub: it does use one)")
@@ -254,9 +364,11 @@ function classify(jll::String)
     if isempty(selected)
         println("  no artifact matches $host: the JLL cannot be used here at all")
         println("  => verdict: no-artifact (an override is not optional, it is the only way in)")
-        return :no_artifact
+        return empty_finding(jll, :no_artifact, "no artifact matches $(host)")
     end
 
+    artifacts = Tuple{String,String}[]
+    kb = 0
     artifact_dir = nothing
     for (name, meta) in selected
         hash = Base.SHA1(meta["git-tree-sha1"])
@@ -270,27 +382,35 @@ function classify(jll::String)
                 continue
             end
         end
+        push!(artifacts, (name, meta["git-tree-sha1"]))
+        kb += dir_kb(dir)
         println("  artifact '$name'  hash $(meta["git-tree-sha1"][1:12])…  $(dir_kb(dir)) kB")
         artifact_dir === nothing && (artifact_dir = dir)
     end
-    artifact_dir === nothing && (println("  no artifact on disk"); return :error)
+    artifact_dir === nothing && (println("  no artifact on disk"); return empty_finding(jll, :error, "no artifact on disk"))
 
     wrapper, prods = declared_products(jll_dir, artifact_dir)
     if isempty(prods)
         println("  the JLL declares no product")
-        return :no_products
+        return empty_finding(jll, :no_products, "no declared products")
     end
     println("  wrapper: $wrapper   products: $(join(sort(collect(keys(prods))), ", "))")
 
-    verdict = :override
+    absent, absent_libs, gaps, sonames = String[], String[], Dict{String,Vector{String}}(), Dict{String,String}()
     for name in sort(collect(keys(prods)))
         p = prods[name]
         art = joinpath(artifact_dir, p.relpath)
         sys = joinpath(PREFIX, p.relpath)
         if !isfile(sys)
+            # The kind decides the verdict, not just the message: a missing *library* means
+            # the JLL cannot be satisfied, while a missing executable or static file leaves
+            # the shared library perfectly overridable - the first sweep called all three
+            # `absent` and hid that difference (JpegTurbo's cjpeg/djpeg/jpegtran, Expat's
+            # xmlwf, XZ's liblzma.a).
             println("  MISSING  $name ($(p.kind)): the system root has no $(p.relpath)")
             println("           (is the Termux package that provides it installed?)")
-            verdict = :needs_jll
+            push!(absent, "$name ($(p.kind))")
+            p.kind == "lib" && push!(absent_libs, name)
             continue
         end
         # The SONAME is what a dlopen by name asks for, and the JLL declares it: the
@@ -304,11 +424,8 @@ function classify(jll::String)
         # symlink - which is what julia-termux's needed-library-aliases.sh already does for
         # its own libs - while a missing symbol means this build is a different feature set
         # and no name will conjure it.
-        if !isempty(gap)
-            verdict == :override && (verdict = :needs_jll)
-        elseif !soname_ok
-            verdict in (:override, :needs_jll) && (verdict = :override_needs_alias)
-        end
+        isempty(gap) || (gaps[name] = gap)
+        (!isempty(gap) || soname_ok) || (sonames[name] = art_soname)
         println("  $(rpad(name, 16)) $(p.kind)  $(p.relpath)")
         println("      system   $(dir_kb(sys)) kB")
         if !soname_ok
@@ -324,42 +441,165 @@ function classify(jll::String)
             if !isempty(gap) && SHOW > 0
                 println("      missing  ", join(gap[1:min(end, SHOW)], ", "),
                         length(gap) > SHOW ? " …" : "")
+                hidden = filter(s -> hidden_in_system(sys, s), gap)
+                isempty(hidden) ||
+                    println("      hidden   $(length(hidden)) of them are in the system build but not exported: ",
+                            join(hidden[1:min(end, SHOW)], ", "))
             end
         end
     end
 
-    label = verdict === :override ? "override" :
-            verdict === :override_needs_alias ? "override-needs-alias" :
-            verdict === :override_gaps ? "override-with-gaps" : "needs-jll"
-    println("  => verdict: $label")
-    if verdict === :override
-        for (_, meta) in selected
-            println("     Overrides.toml: \"$(meta["git-tree-sha1"])\" = \"$PREFIX\"")
+    # The verdict is read off the collected evidence at the end, in order of how hard it is
+    # to answer: a symbol the system build does not export cannot be conjured (Yggdrasil or
+    # a shim); a missing library is a package question; a missing program leaves the library
+    # overridable but the JLL's __init__ still checks it; a missing name is a symlink.
+    verdict = if !isempty(gaps)
+        :needs_jll_gap
+    elseif !isempty(absent_libs)
+        :needs_jll_absent
+    elseif !isempty(absent)
+        :needs_jll_exe
+    elseif !isempty(sonames)
+        :override_needs_alias
+    else
+        :override
+    end
+
+    note = verdict === :needs_jll_gap ?
+        "the system build exports less API: $(sum(length, values(gaps))) symbols" :
+        verdict === :needs_jll_absent ? "the system root lacks the libraries: $(join(absent_libs, ", "))" :
+        verdict === :needs_jll_exe ? "the library is fine; the system root lacks $(join(absent, ", "))" :
+        verdict === :override_needs_alias ? "missing names: $(join(keys(sonames), ", "))" :
+        "the system satisfies every declared product"
+    f = Finding(jll, pkgid.uuid === nothing ? "" : string(pkgid.uuid), verdict, artifacts, kb,
+                sort(collect(keys(prods))), absent, gaps, sonames, note)
+    println("  => verdict: ", VERDICT_LABEL[verdict])
+    if verdict in (:override, :override_needs_alias)
+        # The stable form: keyed by the JLL's uuid and the artifact name, so it survives the
+        # JLL being updated.  It needs the patched Pkg julia-termux ships (docs/14) - without
+        # it Pkg loses the uuid on the download path and fetches the artifact anyway.
+        for (aname, hash) in artifacts
+            println("     Overrides.toml: [$(pkgid.uuid)]  $aname = \"$PREFIX\"    (hash $hash)")
         end
     elseif verdict === :override_needs_alias
-        println("     the system has the API; create the missing names (a symlink each) and then:")
-        for (_, meta) in selected
-            println("     Overrides.toml: \"$(meta["git-tree-sha1"])\" = \"$PREFIX\"")
-        end
+        println("     the system has the API; create the missing names (a symlink each) and then the line above")
     end
-    return verdict
+    return f
 end
 
 println("classify-jll.jl — prefix $PREFIX")
 println("host: $(HostPlatform())")
-counts = Dict{Symbol,Int}()
-for jll in JLLS
-    v = classify(jll)
-    counts[v] = get(counts, v, 0) + 1
+
+findings = Finding[]
+if isempty(JLLS)
+    println("\nno JLL given: see --sweep")
+else
+    # One environment for the whole sweep: N JLLs, one resolve.  A JLL that fails to
+    # resolve as part of the batch is retried alone, so one bad entry does not cost the run.
+    env = mktempdir()
+    Pkg.activate(env; io = devnull)
+    if length(JLLS) > 1
+        println("\ninstalling $(length(JLLS)) JLLs into one environment…")
+        try
+            Pkg.add(JLLS; io = devnull)
+        catch err
+            println("  the batch add failed (", first(sprint(showerror, err), 120), "); retrying one by one")
+        end
+        for jll in JLLS
+            Base.find_package(jll) === nothing || continue
+            try
+                Pkg.add(jll; io = devnull)
+            catch err
+                println("  could not add $jll on its own: ", first(sprint(showerror, err), 120))
+            end
+        end
+    end
+    for jll in JLLS
+        push!(findings, classify(jll; env = env))
+    end
 end
 
 println("\n=== summary ===")
-for (v, n) in sort!(collect(counts); by = first)
-    println("  $(rpad(String(v), 18)) $n")
+counts = Dict{Symbol,Int}()
+for f in findings
+    counts[f.verdict] = get(counts, f.verdict, 0) + 1
 end
+for (v, n) in sort!(collect(counts); by = first)
+    println("  $(rpad(VERDICT_LABEL[v], 22)) $n")
+end
+
+if !isempty(findings)
+    duplicated = sum(f -> f.kb, findings; init = 0)
+    println("\n  official artifacts on disk for these JLLs: $(round(duplicated / 1024, digits = 1)) MB")
+    println("  (that is the duplication today: every one of them is downloaded and none of them loads)")
+
+    free = [f for f in findings if f.verdict in (:override, :override_needs_alias)]
+    stub = [f for f in findings if f.verdict in (:system_stub, :needs_alias)]
+    absent = [f for f in findings if f.verdict === :needs_jll_absent]
+    exe = [f for f in findings if f.verdict === :needs_jll_exe]
+    gap = [f for f in findings if f.verdict === :needs_jll_gap]
+
+    if !isempty(stub)
+        println("\n  already resolved by the port's stdlib stubs: ", join(getfield.(stub, :jll), ", "))
+    end
+    if !isempty(free)
+        println("\n  free win — one Overrides.toml line each, nothing to build: ", join(getfield.(free, :jll), ", "))
+        println("  # ~/.julia/artifacts/Overrides.toml  (stable form: needs the patched Pkg)")
+        for f in free
+            for (aname, _) in f.artifacts
+                println("  [$(f.uuid)]\n  $aname = \"$PREFIX\"    # $(f.jll)")
+            end
+        end
+    end
+    if !isempty(absent)
+        println("\n  system root lacks the library (check whether Termux packages it): ",
+                join(getfield.(absent, :jll), ", "))
+    end
+    if !isempty(exe)
+        println("\n  library satisfied, but the JLL also declares programs the system lacks: ",
+                join(getfield.(exe, :jll), ", "))
+        for f in exe
+            println("    $(f.jll): $(f.note)")
+        end
+    end
+    if !isempty(gap)
+        println("\n  Yggdrasil's job — the system build exports less API: ", join(getfield.(gap, :jll), ", "))
+        for f in gap
+            println("    $(f.jll): $(f.note)")
+        end
+    end
+end
+
+if MARKDOWN && !isempty(findings)
+    println("\n=== markdown ===")
+    println("| JLL | verdict | products | official artifact | missing |")
+    println("|---|---|---|---|---|")
+    for f in findings
+        missing = if !isempty(f.gaps)
+            n = sum(length, values(f.gaps))
+            # Two symbols as a taste, not the whole list: the first sweep printed all 235
+            # of FFTW's into one table cell.
+            example = first(values(f.gaps))
+            "$n symbols ($(join(example[1:min(2, length(example))], ", "))…)"
+        elseif !isempty(f.absent)
+            "products absent: $(join(f.absent, ", "))"
+        elseif !isempty(f.sonames)
+            "names: $(join(collect(keys(f.sonames)), ", "))"
+        else
+            "—"
+        end
+        println("| `$(f.jll)` | $(VERDICT_LABEL[f.verdict]) | $(join(f.products, ", ")) | " *
+                "$(round(f.kb / 1024, digits = 1)) MB | $missing |")
+    end
+end
+
 println()
-println("override            the system satisfies the JLL: an Overrides.toml line stops the download")
+println("override              the system satisfies the JLL: an Overrides.toml line stops the download")
 println("override-needs-alias  same, plus a name to create (a symlink answers it)")
-println("needs-jll           the system's build exports less API than the official one: Yggdrasil or a shim")
-println("system-stub         stdlib stub: already resolves to the system, downloads nothing")
-println("needs-alias         a stub whose soname nothing answers (a symlink fixes it)")
+println("needs-jll (absent lib)  a declared *library* is not in the system root: pkg install, or Yggdrasil")
+println("needs-jll (absent exe)  the library is fine, but the JLL also declares a program/file the system lacks")
+println("needs-jll (gap)       the system's build exports less API than the official one: Yggdrasil or a shim")
+println("system-stub           stdlib stub: already resolves to the system, downloads nothing")
+println("needs-alias           a stub whose soname nothing answers (a symlink fixes it)")
+
+exit(any(f -> f.verdict === :error, findings) ? 1 : 0)

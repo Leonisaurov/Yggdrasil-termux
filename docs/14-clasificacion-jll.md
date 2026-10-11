@@ -60,6 +60,10 @@ ccall png_access_version_number = 10659
 
 Una JLL **funcionando en bionic sin compilar nada**, y el artefacto no volvió a bajarse.
 
+> **A escala**: `docs/15` corre esta misma clasificación sobre 43 JLLs (los que Termux ya
+> satisface más su clausura) y valida los overrides con una corrida real.  Resultado medido:
+> 23 overrides gratis, 7 con gap real, y 5 bloqueadores raíz detrás de casi todos.
+
 ## 14.1 El primer `needs-jll` resuelto: el artefacto bionic de FFTW (2026-10-11)
 
 `FFTW_jll` era el caso que decidía si Yggdrasil tenía razón de existir: la librería **está**

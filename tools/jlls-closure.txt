@@ -1,0 +1,54 @@
+# The dependency closure of tools/jlls-sweep.txt — the JLLs a JLL drags in, which is what
+# decides whether an override actually works: an override is only as good as its closure.
+# Measured 2026-10-11: Cairo_jll, HarfBuzz_jll, Glib_jll, Libtiff_jll, libwebp_jll and
+# XML2_jll all PASSED the symbol comparison and then failed to *load*, because one of their
+# dependencies was still pointing at a downloaded glibc artifact.
+#
+# Built from the *_jll packages installed in the two depots plus the sweep list itself.
+# Excluded on purpose: MKL_jll, oneTBB_jll, IntelOpenMP_jll and LLVMOpenMP_jll (x86/HPC
+# drop-ins, and MKL's artifact is ~1 GB), and dlfcn_win32_jll (a Windows shim).
+GettextRuntime_jll
+Giflib_jll
+Graphite2_jll
+LERC_jll
+Libffi_jll
+Libglvnd_jll
+Libiconv_jll
+Libmount_jll
+Libuuid_jll
+Xorg_libX11_jll
+Xorg_libXau_jll
+Xorg_libXdmcp_jll
+Xorg_libXext_jll
+Xorg_libXrender_jll
+Xorg_libxcb_jll
+Xorg_xtrans_jll
+
+# the sweep's own 27, for a single self-contained run
+FFTW_jll
+libpng_jll
+Cairo_jll
+Pixman_jll
+Fontconfig_jll
+FreeType2_jll
+HarfBuzz_jll
+Glib_jll
+JpegTurbo_jll
+Libtiff_jll
+libwebp_jll
+XML2_jll
+Expat_jll
+Zstd_jll
+Bzip2_jll
+XZ_jll
+SQLite_jll
+PCRE2_jll
+OpenSSL_jll
+LibCURL_jll
+LibGit2_jll
+libsodium_jll
+Arpack_jll
+GMP_jll
+MPFR_jll
+Zlib_jll
+OpenBLAS_jll

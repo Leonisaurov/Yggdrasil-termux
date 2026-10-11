@@ -156,3 +156,25 @@ depot sin registro, y `git` resolviendo al biónico del prefijo.  Ver
   antes de crearla, el `/bin/sh` glibc con el `LD_PRELOAD` bionic → *invalid ELF header*, la
   caché del tarball recomputada tras el re-exec, y `tar | head` bajo `pipefail`); las tres
   quedaron registradas en `../Julia/julia-termux/AGENTS.md`.
+
+## 2026-10-11 — El mapa a escala: 43 JLLs clasificados, 23 overrides validados
+
+- `tools/classify-jll.jl` ahora barre (`--sweep`, un solo entorno para N JLLs) y emite la
+  tabla en markdown y el bloque de overrides en la forma **estable** (UUID + nombre de
+  artefacto, la que el `Pkg` parcheado honra).  El mapa completo: `docs/15`.
+- **El barrido corrigió el clasificador tres veces** (todas medidas, todas en `docs/15` §15.2):
+  los artefactos oficiales exportan `__bss_end__`/`__bss_start__`/`__end__`/`_bss_end__` (tipo
+  `B`) y `_init`/`_fini` (`T`) y Termux no, así que cuatro símbolos fantasma convertían **diez**
+  librerías en falsos `needs-jll`; `XZ_5.1.2alpha` es un nodo de versión (tipo `A`) y un
+  `_ZSt4swap…` de HarfBuzz es débil (`W`); y un producto ausente puede ser una librería o un
+  ejecutable, que no son la misma decisión (JpegTurbo/Expat/XZ estaban condenados por `cjpeg`,
+  `xmlwf` y `liblzma.a` con la librería compartida satisfecha).
+- **La clausura manda**: `Cairo`, `HarfBuzz`, `Glib`, `Libtiff`, `libwebp` y `XML2` pasaron la
+  comparación de símbolos y después no cargaron, porque una dependencia seguía apuntando a su
+  artefacto glibc.  Se agregó `tools/validate-overrides.jl`, que carga el JLL de verdad y exige
+  que cada `<producto>_path` resuelva fuera de `<depot>/artifacts`: **19/24 PASS, 0 artefactos
+  nuevos**.  Los cinco que no cargan tienen cinco bloqueadores raíz (Fontconfig 1 símbolo,
+  Libffi 2, JpegTurbo 3 programas, XZ un `.a`, LERC ausente).
+- `overrides/termux-overrides.toml`: 24 entradas (FFTW + los 23 ganadores), aplicadas y
+  validadas en el dispositivo.  Duplicación medida del stack: **209,3 MB** de artefactos
+  oficiales en 43 JLLs, ninguno de los cuales carga.

@@ -217,3 +217,18 @@ no están en la tabla, que se conservan).
 dependencia `Pango_jll` arrastra `FriBidi_jll`, que no estaba en ninguna lista.  Por eso el
 archivo de clausura se **deriva** de lo instalado después de cada barrido
 (`ls ~/.julia/packages/*_jll/*`), en vez de escribirse: cada vuelta converge un nivel más.
+
+### Los tres artefactos, publicados y verificados (2026-10-11)
+
+| artefacto | release | sha256 | verificado bajando la release |
+|---|---|---|---|
+| FFTW 3.3.11 | `fftw-bionic` | `3c3e8f50…` | sí (docs/14 §14.1) |
+| LERC 4.2.0 | `lerc-bionic` | `e521e9543d959747…` | sí — instalado en el dispositivo y los 37 overrides revalidados |
+| gettext-runtime 1.0 | `gettext-runtime-bionic` | `12aaaf371bf791ea…` | sí — igual, y sus cinco symlinks resuelven |
+
+Los tres salen del mismo workflow (`build-bionic-artifact.yml`, input `recipe`) y de scripts que
+se corrieron en el dispositivo antes de commitearlos.  Dos trampas del entorno del runner
+aparecieron en la primera corrida y quedaron documentadas: cmake agarrando el **ninja del host**
+(glibc) y muriendo en el `LD_PRELOAD` bionic —el mismo muro que `/bin/sh`, un nivel más abajo— y
+el prefijo del CI sin `gettext`, que hacía colgar los symlinks del dir compuesto (el input
+`packages` de la acción lo resuelve).

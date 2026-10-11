@@ -227,3 +227,21 @@ depot sin registro, y `git` resolviendo al biónico del prefijo.  Ver
   curso) y sigue sin tocar `packages/julia/**`.
 - **Clausura convergida**: re-derivada de lo instalado, **55 JLLs** y **cero `needs-jll`**; tabla
   de 37 entradas, `validate-overrides.jl` **37/37** con 0 descargas.
+
+## 2026-10-11 — Los tres artefactos en CI, publicados y verificados desde la release
+
+- `build-fftw-bionic.yml` → **`build-bionic-artifact.yml`** con un input `recipe` (fftw, lerc,
+  gettext-runtime) resuelto en un paso que mapea script, directorio, tag y nota de release;
+  concurrencia **por receta** y sigue sin tocar `packages/julia/**`.  Tres corridas verdes en
+  paralelo (una por receta) y tres releases: `fftw-bionic`, `lerc-bionic`
+  (sha256 `e521e9543d959747…`) y `gettext-runtime-bionic` (sha256 `12aaaf371bf791ea…`).
+- Dos fallos de la primera corrida, los dos de entorno y ninguno del artefacto: cmake agarraba
+  el **ninja del host** (`/usr/local/bin/ninja`, glibc) y moría con el `LD_PRELOAD` bionic
+  (`invalid ELF header`) —el mismo muro que `/bin/sh`, un nivel más abajo—; y el prefijo del CI
+  no tiene `gettext`, así que los cuatro symlinks del dir compuesto colgaban.  Arreglos:
+  Makefiles en LERC (como FFTW, que sí pasó) y el paso de resolución **antes** de materializar
+  el prefijo para poder pedirle los paquetes extra que cada receta necesita.
+- **Verificado bajando las releases al dispositivo**: sha256 OK, el dir compuesto resuelve sus
+  cinco productos, y con esos artefactos `validate-overrides.jl` da **37/37** con **0
+  artefactos nuevos**.  Consumidores: EzXML.jl y `using Cairo` (Cairo+Pango+Glib+FriBidi).
+- Los construidos a mano quedaron como `.handbuilt` al lado de los publicados.

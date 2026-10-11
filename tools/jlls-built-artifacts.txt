@@ -15,7 +15,10 @@ FFTW_jll  /data/data/com.termux/files/home/.local/opt/fftw-bionic
 
 # LERC_jll - Termux packages no libLerc at all, and it is a dependency of Libtiff, which
 #   libwebp needs.  Built from Esri LERC 4.2.0 (source sha256 a1fb593e...) with the bionic
-#   clang++; libLerc.so.4 needs libc++_shared/libc/libm and nothing glibc.
+#   clang++; libLerc.so.4 needs libc++_shared/libc/libm and nothing glibc.  Built in CI by
+#   scripts/build-lerc-bionic.sh and published as the `lerc-bionic` release
+#   (lerc-bionic-4.2.0-aarch64.tar.gz, sha256 e521e9543d95974790051904fb9c01787df44609b705f49014e03481a63d1b23); verified on the device by
+#   downloading that release and re-running validate-overrides.jl.
 LERC_jll  /data/data/com.termux/files/home/.local/opt/lerc-bionic
 
 # GettextRuntime_jll - the system has gettext 1.0, which ships libasprintf but NOT libintl:
@@ -23,5 +26,9 @@ LERC_jll  /data/data/com.termux/files/home/.local/opt/lerc-bionic
 #   this JLL, so the override is a composed directory: libintl.so built here from gettext 1.0
 #   (sha256 85d99b79...), plus symlinks to the system's libasprintf.so and to its
 #   gettext/envsubst/ngettext programs.  Its libasprintf gap (10 symbols) is in
-#   jlls-accepted-gaps.txt.
+#   jlls-accepted-gaps.txt.  Built in CI by scripts/build-gettext-runtime-bionic.sh and
+#   published as the `gettext-runtime-bionic` release
+#   (gettext-runtime-bionic-1.0-aarch64.tar.gz, sha256 12aaaf371bf791eaa6dd8e11b4d2332668ed7b7c22220077c6f94f4a400b3002); the symlinks in it point at
+#   /data/data/com.termux/files/usr, which is also the prefix the CI runner materialises, so
+#   the artifact is correct for the device and the CI check is honest.
 GettextRuntime_jll  /data/data/com.termux/files/home/.local/opt/gettext-runtime-bionic

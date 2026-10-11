@@ -204,6 +204,15 @@ EzXML.jl     parsexml + findfirst                  → "42"       (valida el gap
 Cairo.jl     using Cairo carga Cairo+Pango+Glib+FriBidi+HarfBuzz sin InitError
 ```
 
+### La clausura, convergida
+
+Re-derivada de lo instalado después de esa vuelta, son **55 JLLs** (entraron `Pango_jll` y
+`FriBidi_jll` por el consumidor) y siguen **cero `needs-jll`**: 7 stubs, 1 alias, 9 `override`,
+16 `override-needs-alias`, 6 gaps aceptados, 3 artefactos propios, 3 con programas faltantes y 1
+sin productos.  La tabla quedó en **37 entradas** y `validate-overrides.jl` da **37/37 con 0
+artefactos nuevos** — el depot del usuario se quedó en 3 entradas (los dos artefactos de JLLs que
+no están en la tabla, que se conservan).
+
 `Cairo.jl` además mostró que la clausura es **más profunda de lo que uno escribe a mano**: su
 dependencia `Pango_jll` arrastra `FriBidi_jll`, que no estaba en ninguna lista.  Por eso el
 archivo de clausura se **deriva** de lo instalado después de cada barrido

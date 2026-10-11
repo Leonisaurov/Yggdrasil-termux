@@ -111,7 +111,7 @@ depot: solo Overrides.toml   # el artefacto glibc oficial apartado ⇒ no se baj
 O sea: **FFTW.jl funciona en bionic**, con el override por UUID+nombre (estable entre
 versiones del JLL, gracias al parche de `Pkg` que describe la sección siguiente) y sin duplicar la descarga.
 
-**El workflow es barato y aparte**: `build-fftw-bionic.yml` tiene su propio grupo de
+**El workflow es barato y aparte**: `build-bionic-artifact.yml` tiene su propio grupo de
 concurrencia y **no toca `packages/julia/**`**, así que no puede invalidar el caché del
 build de Julia (que cuesta ~60 min); construye el artefacto en ~4 min.
 

@@ -2,11 +2,11 @@
 # Derived from the *_jll packages installed in both depots after a sweep, plus the sweep list
 # Excluded on purpose: MKL_jll, oneTBB_jll, IntelOpenMP_jll and LLVMOpenMP_jll (x86/HPC
 # The dependency closure of tools/jlls-sweep.txt — the JLLs a JLL drags in, which is what
+# and FriBidi_jll/Pango_jll came from a real consumer (Cairo.jl).
 # decides whether an override actually works: an override is only as good as its closure.
-# dependency of Glib_jll, which is how libgettextlib ended up being loaded).
 # drop-ins, and MKL's artifact is ~1 GB), and dlfcn_win32_jll (a Windows shim).
 # itself, so it converges: each sweep installs the closure of what it swept, and re-deriving
-# picks up whatever the last one added (Gettext_jll came in exactly that way - it is a
+# picks up whatever the last one added.  Gettext_jll came in that way (a dependency of Glib_jll)
 Arpack_jll
 Bzip2_jll
 Cairo_jll
@@ -14,6 +14,7 @@ Expat_jll
 FFTW_jll
 Fontconfig_jll
 FreeType2_jll
+FriBidi_jll
 GMP_jll
 GettextRuntime_jll
 Gettext_jll
@@ -35,6 +36,7 @@ MPFR_jll
 OpenBLAS_jll
 OpenSSL_jll
 PCRE2_jll
+Pango_jll
 Pixman_jll
 SQLite_jll
 XML2_jll

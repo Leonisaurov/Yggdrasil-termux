@@ -150,7 +150,7 @@ depot sin registro, y `git` resolviendo al biónico del prefijo.  Ver
   `3c3e8f50…`) bajado al teléfono; con el artefacto glibc apartado del depot y el override
   UUID+nombre, `FFTW_jll.libfftw3_path = …/fftw-bionic/lib/libfftw3.so`, `fft/ifft`, `rfft`,
   `plan/apply` y `dct/idct` correctos, y **el depot sin bajar nada**.
-- Workflow propio (`build-fftw-bionic.yml`, ~4 min, grupo de concurrencia propio, no toca
+- Workflow propio (`build-bionic-artifact.yml`, ~4 min, grupo de concurrencia propio, no toca
   `packages/julia/**`): así un cambio del artefacto no invalida el caché del build de Julia
   (~60 min).  Tres corridas fallaron por trampas del entorno del runner (normalizar una ruta
   antes de crearla, el `/bin/sh` glibc con el `LD_PRELOAD` bionic → *invalid ELF header*, la
@@ -205,3 +205,25 @@ depot sin registro, y `git` resolviendo al biónico del prefijo.  Ver
 - La clausura es más profunda de lo que se escribe a mano: `Cairo.jl` reveló `Pango_jll` →
   `FriBidi_jll`.  Por eso `tools/jlls-closure.txt` se **deriva** de lo instalado después de cada
   barrido y converge un nivel por vuelta.
+
+## 2026-10-11 — Clausura convergida, remoto, depot limpio y artefactos con CI
+
+- **Remoto**: el repo es `Leonisaurov/Yggdrasil-termux` (público), con los 14 commits empujados y
+  su fila + bloque de quick commands en `PORTS.md` del workspace.
+- **Depot limpio**: 156 MB → 3.4 MB.  Se mapeó cada artefacto del depot a su JLL leyendo los
+  `Artifacts.toml` de los paquetes (el hash no dice nada por sí solo) y se borraron **sólo** los 23
+  cubiertos por un override; quedan los dos de JLLs que no están en la tabla (`LLVMOpenMP_jll` y
+  `Xorg_xtrans_jll`, que se conservan a propósito).  Verificado después: **37/37** y **0
+  artefactos nuevos**, o sea que los 23 eran peso muerto.
+- **Artefactos reproducibles**: `scripts/build-lerc-bionic.sh` y
+  `scripts/build-gettext-runtime-bionic.sh` (en julia-termux, como el de FFTW), cada uno pineado
+  por sha256 de la fuente y con un test de aceptación de verdad — LERC hace un round trip por la
+  API C (`115 bytes compressed, exact`) y gettext-runtime llama `gettext`/`dgettext` desde un
+  programa bionic.  Los dos corrieron en el dispositivo antes de commitear (el primer test de
+  LERC pasaba 9 argumentos a una función de 10; las firmas ahora salen del `Lerc_c_api.h`).
+- **Un workflow para los tres**: `build-fftw-bionic.yml` → `build-bionic-artifact.yml`, con un
+  input `recipe` (fftw, lerc, gettext-runtime) resuelto en un paso que mapea script, directorio,
+  tag y nota de release; concurrencia **por receta** (un dispatch de lerc no cancela un fftw en
+  curso) y sigue sin tocar `packages/julia/**`.
+- **Clausura convergida**: re-derivada de lo instalado, **55 JLLs** y **cero `needs-jll`**; tabla
+  de 37 entradas, `validate-overrides.jl` **37/37** con 0 descargas.

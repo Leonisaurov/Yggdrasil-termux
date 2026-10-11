@@ -1,5 +1,8 @@
 # Yggdrasil-termux — artefactos JLL de Julia para Termux/Android (bionic)
 
+> Repositorio: <https://github.com/Leonisaurov/Yggdrasil-termux> (público).
+
+
 > **Estado: investigación y planificación.** No hay nada implementado, compilado ni
 > publicado. Este repositorio existe para poder ejecutar el plan **desde cero** sin volver
 > a investigar. Fecha de la investigación: **2026-10-10**.

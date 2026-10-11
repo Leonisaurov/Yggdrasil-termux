@@ -119,6 +119,8 @@ el layout del JLL oficial) o un shim chico.
 
 ### La pregunta que decide, por librería
 
+El clasificador que la responde, con la primera tabla medida y su validación, está en [`14-clasificacion-jll.md`](14-clasificacion-jll.md) (`tools/classify-jll.jl`).
+
 1. ¿Termux ya shipa la librería? (`pacman -Q <pkg>`) — si no, es caso Yggdrasil.
 2. ¿El paquete del sistema expone los productos y símbolos que el JLL declara? — override, cero descarga y cero build.
 3. Si no — Yggdrasil con el layout del JLL oficial, o un shim bionic.
